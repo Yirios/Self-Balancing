@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# Reference materials (large, external)
+ref/
+
+# Training logs & tensorboard
+logs/
+
+# Generated model files
+*.pt
+*.pkl
+*.zip
+best_model/
+best_model_reg/
+
+# Generated C headers
+balance_nn*.h
+
+# Generated animations
+assets/
+
+# UV lockfile (let each user resolve)
+uv.lock
+
+# Python version
+.python-version
+
+# Backup
+backup_*/
