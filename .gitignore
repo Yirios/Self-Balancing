@@ -50,3 +50,13 @@ backup_*/
 # other
 ref
 realcar
+
+# source 
+WHEELTEC_HAL/Core/
+WHEELTEC_HAL/Drivers/
+WHEELTEC_HAL/HAREWARE/
+WHEELTEC_HAL/MDK-ARM/
+WHEELTEC_HAL/SYSTEM/
+WHEELTEC_HAL/.mxproject
+WHEELTEC_HAL/keilkilll.bat
+WHEELTEC_HAL/MiniBalance.ioc
