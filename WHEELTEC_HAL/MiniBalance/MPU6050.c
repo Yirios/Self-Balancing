@@ -90,18 +90,18 @@
 
 ///**************************************************************************
 //Function: The new ADC data is updated to FIFO array for filtering
-//Input   : ax，ay，az：x，y, z-axis acceleration data；gx，gy，gz：x. Y, z-axis angular acceleration data
+//Input   : ax锛宎y锛宎z锛歺锛寉, z-axis acceleration data锛沢x锛実y锛実z锛歺. Y, z-axis angular acceleration data
 //Output  : none
-//函数功能：将新的ADC数据更新到 FIFO数组，进行滤波处理
-//入口参数：ax，ay，az：x，y，z轴加速度数据；gx，gy，gz：x，y，z轴角加速度数据
-//返回  值：无
+//鍑芥暟鍔熻兘锛氬皢鏂扮殑ADC鏁版嵁鏇存柊鍒� FIFO鏁扮粍锛岃繘琛屾护娉㈠�勭悊
+//鍏ュ彛鍙傛暟锛歛x锛宎y锛宎z锛歺锛寉锛寊杞村姞閫熷害鏁版嵁锛沢x锛実y锛実z锛歺锛寉锛寊杞磋�掑姞閫熷害鏁版嵁
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 
 //void  MPU6050_newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
 //{
 //unsigned char i ;
 //int32_t sum=0;
-//for(i=1;i<10;i++){	//FIFO 操作
+//for(i=1;i<10;i++){	//FIFO 鎿嶄綔
 //MPU6050_FIFO[0][i-1]=MPU6050_FIFO[0][i];
 //MPU6050_FIFO[1][i-1]=MPU6050_FIFO[1][i];
 //MPU6050_FIFO[2][i-1]=MPU6050_FIFO[2][i];
@@ -109,7 +109,7 @@
 //MPU6050_FIFO[4][i-1]=MPU6050_FIFO[4][i];
 //MPU6050_FIFO[5][i-1]=MPU6050_FIFO[5][i];
 //}
-//MPU6050_FIFO[0][9]=ax;//将新的数据放置到 数据的最后面
+//MPU6050_FIFO[0][9]=ax;//灏嗘柊鐨勬暟鎹�鏀剧疆鍒� 鏁版嵁鐨勬渶鍚庨潰
 //MPU6050_FIFO[1][9]=ay;
 //MPU6050_FIFO[2][9]=az;
 //MPU6050_FIFO[3][9]=gx;
@@ -117,7 +117,7 @@
 //MPU6050_FIFO[5][9]=gz;
 
 //sum=0;
-//for(i=0;i<10;i++){	//求当前数组的合，再取平均值
+//for(i=0;i<10;i++){	//姹傚綋鍓嶆暟缁勭殑鍚堬紝鍐嶅彇骞冲潎鍊�
 //   sum+=MPU6050_FIFO[0][i];
 //}
 //MPU6050_FIFO[0][10]=sum/10;
@@ -155,11 +155,11 @@
 
 ///**************************************************************************
 //Function: Setting the clock source of mpu6050
-//Input   : source：Clock source number
+//Input   : source锛欳lock source number
 //Output  : none
-//函数功能：设置  MPU6050 的时钟源
-//入口参数：source：时钟源编号
-//返回  值：无
+//鍑芥暟鍔熻兘锛氳�剧疆  MPU6050 鐨勬椂閽熸簮
+//鍏ュ彛鍙傛暟锛歴ource锛氭椂閽熸簮缂栧彿
+//杩斿洖  鍊硷細鏃�
 // * CLK_SEL | Clock Source
 // * --------+--------------------------------------
 // * 0       | Internal oscillator
@@ -190,27 +190,27 @@
 
 ///**************************************************************************
 //Function: Setting the maximum range of mpu6050 accelerometer
-//Input   : range：Acceleration maximum range number
+//Input   : range锛欰cceleration maximum range number
 //Output  : none
-//函数功能：设置 MPU6050 加速度计的最大量程
-//入口参数：range：加速度最大量程编号
-//返回  值：无
+//鍑芥暟鍔熻兘锛氳�剧疆 MPU6050 鍔犻�熷害璁＄殑鏈�澶ч噺绋�
+//鍏ュ彛鍙傛暟锛歳ange锛氬姞閫熷害鏈�澶ч噺绋嬬紪鍙�
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
-////#define MPU6050_ACCEL_FS_2          0x00  		//===最大量程+-2G
-////#define MPU6050_ACCEL_FS_4          0x01			//===最大量程+-4G
-////#define MPU6050_ACCEL_FS_8          0x02			//===最大量程+-8G
-////#define MPU6050_ACCEL_FS_16         0x03			//===最大量程+-16G
+////#define MPU6050_ACCEL_FS_2          0x00  		//===鏈�澶ч噺绋�+-2G
+////#define MPU6050_ACCEL_FS_4          0x01			//===鏈�澶ч噺绋�+-4G
+////#define MPU6050_ACCEL_FS_8          0x02			//===鏈�澶ч噺绋�+-8G
+////#define MPU6050_ACCEL_FS_16         0x03			//===鏈�澶ч噺绋�+-16G
 //void MPU6050_setFullScaleAccelRange(uint8_t range) {
 //    IICwriteBits(devAddr, MPU6050_RA_ACCEL_CONFIG, MPU6050_ACONFIG_AFS_SEL_BIT, MPU6050_ACONFIG_AFS_SEL_LENGTH, range);
 //}
 
 ///**************************************************************************
 //Function: Set mpu6050 to sleep mode or not
-//Input   : enable：1，sleep；0，work；
+//Input   : enable锛�1锛宻leep锛�0锛寃ork锛�
 //Output  : none
-//函数功能：设置 MPU6050 是否进入睡眠模式
-//入口参数：enable：1，睡觉；0，工作；
-//返回  值：无
+//鍑芥暟鍔熻兘锛氳�剧疆 MPU6050 鏄�鍚﹁繘鍏ョ潯鐪犳ā寮�
+//鍏ュ彛鍙傛暟锛歟nable锛�1锛岀潯瑙夛紱0锛屽伐浣滐紱
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 //void MPU6050_setSleepEnabled(uint8_t enabled) {
 //    IICwriteBit(devAddr, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_SLEEP_BIT, enabled);
@@ -220,9 +220,9 @@
 //Function: Read identity
 //Input   : none
 //Output  : 0x68
-//函数功能：读取  MPU6050 WHO_AM_I 标识
-//入口参数：无
-//返回  值：0x68
+//鍑芥暟鍔熻兘锛氳�诲彇  MPU6050 WHO_AM_I 鏍囪瘑
+//鍏ュ彛鍙傛暟锛氭棤
+//杩斿洖  鍊硷細0x68
 //**************************************************************************/
 //uint8_t MPU6050_getDeviceID(void) {
 
@@ -233,10 +233,10 @@
 ///**************************************************************************
 //Function: Check whether mpu6050 is connected
 //Input   : none
-//Output  : 1：Connected；0：Not connected
-//函数功能：检测MPU6050 是否已经连接
-//入口参数：无
-//返回  值：1：已连接；0：未连接
+//Output  : 1锛欳onnected锛�0锛歂ot connected
+//鍑芥暟鍔熻兘锛氭��娴婱PU6050 鏄�鍚﹀凡缁忚繛鎺�
+//鍏ュ彛鍙傛暟锛氭棤
+//杩斿洖  鍊硷細1锛氬凡杩炴帴锛�0锛氭湭杩炴帴
 //**************************************************************************/
 //uint8_t MPU6050_testConnection(void) {
 //   if(MPU6050_getDeviceID() == 0x68)  //0b01101000;
@@ -246,11 +246,11 @@
 
 ///**************************************************************************
 //Function: Setting whether mpu6050 is the host of aux I2C cable
-//Input   : enable：1，yes；0;not
+//Input   : enable锛�1锛寉es锛�0;not
 //Output  : none
-//函数功能：设置 MPU6050 是否为AUX I2C线的主机
-//入口参数：enable：1，是；0：否
-//返回  值：无
+//鍑芥暟鍔熻兘锛氳�剧疆 MPU6050 鏄�鍚︿负AUX I2C绾跨殑涓绘満
+//鍏ュ彛鍙傛暟锛歟nable锛�1锛屾槸锛�0锛氬惁
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 //void MPU6050_setI2CMasterModeEnabled(uint8_t enabled) {
 //    IICwriteBit(devAddr, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_I2C_MST_EN_BIT, enabled);
@@ -258,11 +258,11 @@
 
 ///**************************************************************************
 //Function: Setting whether mpu6050 is the host of aux I2C cable
-//Input   : enable：1，yes；0;not
+//Input   : enable锛�1锛寉es锛�0;not
 //Output  : none
-//函数功能：设置 MPU6050 是否为AUX I2C线的主机
-//入口参数：enable：1，是；0：否
-//返回  值：无
+//鍑芥暟鍔熻兘锛氳�剧疆 MPU6050 鏄�鍚︿负AUX I2C绾跨殑涓绘満
+//鍏ュ彛鍙傛暟锛歟nable锛�1锛屾槸锛�0锛氬惁
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 //void MPU6050_setI2CBypassEnabled(uint8_t enabled) {
 //    IICwriteBit(devAddr, MPU6050_RA_INT_PIN_CFG, MPU6050_INTCFG_I2C_BYPASS_EN_BIT, enabled);
@@ -272,26 +272,26 @@
 //Function: initialization Mpu6050 to enter the available state
 //Input   : none
 //Output  : none
-//函数功能：初始化	MPU6050 以进入可用状态
-//入口参数：无
-//返回  值：无
+//鍑芥暟鍔熻兘锛氬垵濮嬪寲	MPU6050 浠ヨ繘鍏ュ彲鐢ㄧ姸鎬�
+//鍏ュ彛鍙傛暟锛氭棤
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 //void MPU6050_initialize(void) {
-//    MPU6050_setClockSource(MPU6050_CLOCK_PLL_YGYRO); //设置时钟
-//    MPU6050_setFullScaleGyroRange(MPU6050_GYRO_FS_2000);//陀螺仪量程设置
-//    MPU6050_setFullScaleAccelRange(MPU6050_ACCEL_FS_2);	//加速度度最大量程 +-2G
-//    MPU6050_setSleepEnabled(0); //进入工作状态
-//	  MPU6050_setI2CMasterModeEnabled(0);	 //不让MPU6050 控制AUXI2C
-//	  MPU6050_setI2CBypassEnabled(0);	 //主控制器的I2C与	MPU6050的AUXI2C	直通关闭
+//    MPU6050_setClockSource(MPU6050_CLOCK_PLL_YGYRO); //璁剧疆鏃堕挓
+//    MPU6050_setFullScaleGyroRange(MPU6050_GYRO_FS_2000);//闄�铻轰华閲忕▼璁剧疆
+//    MPU6050_setFullScaleAccelRange(MPU6050_ACCEL_FS_2);	//鍔犻�熷害搴︽渶澶ч噺绋� +-2G
+//    MPU6050_setSleepEnabled(0); //杩涘叆宸ヤ綔鐘舵��
+//	  MPU6050_setI2CMasterModeEnabled(0);	 //涓嶈�㎝PU6050 鎺у埗AUXI2C
+//	  MPU6050_setI2CBypassEnabled(0);	 //涓绘帶鍒跺櫒鐨処2C涓�	MPU6050鐨凙UXI2C	鐩撮�氬叧闂�
 //}
 
 ///**************************************************************************
 //Function: Initialization of DMP in mpu6050
 //Input   : none
 //Output  : none
-//函数功能：MPU6050内置DMP的初始化
-//入口参数：无
-//返回  值：无
+//鍑芥暟鍔熻兘锛歁PU6050鍐呯疆DMP鐨勫垵濮嬪寲
+//鍏ュ彛鍙傛暟锛氭棤
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 //void DMP_Init(void)
 //{ 
@@ -326,9 +326,9 @@
 //Function: Read the attitude information of DMP in mpu6050
 //Input   : none
 //Output  : none
-//函数功能：读取MPU6050内置DMP的姿态信息
-//入口参数：无
-//返回  值：无
+//鍑芥暟鍔熻兘锛氳�诲彇MPU6050鍐呯疆DMP鐨勫Э鎬佷俊鎭�
+//鍏ュ彛鍙傛暟锛氭棤
+//杩斿洖  鍊硷細鏃�
 //**************************************************************************/
 //void Read_DMP(void)
 //{	
@@ -336,15 +336,15 @@
 //		unsigned char more;
 //		long quat[4];
 
-//				dmp_read_fifo(gyro, accel, quat, &sensor_timestamp, &sensors, &more);		//读取DMP数据
+//				dmp_read_fifo(gyro, accel, quat, &sensor_timestamp, &sensors, &more);		//璇诲彇DMP鏁版嵁
 //				if (sensors & INV_WXYZ_QUAT )
 //				{    
 //					 q0=quat[0] / q30;
 //					 q1=quat[1] / q30;
 //					 q2=quat[2] / q30;
-//					 q3=quat[3] / q30;  //四元数
-//					 Pitch = asin(-2 * q1 * q3 + 2 * q0* q2)* 57.3; 	//计算出俯仰角
-//					 Roll = atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3; // 计算出横滚角
+//					 q3=quat[3] / q30;  //鍥涘厓鏁�
+//					 Pitch = asin(-2 * q1 * q3 + 2 * q0* q2)* 57.3; 	//璁＄畻鍑轰刊浠拌��
+//					 Roll = atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3; // 璁＄畻鍑烘í婊氳��
 //				}
 
 //}
@@ -352,16 +352,16 @@
 //Function: Read mpu6050 built-in temperature sensor data
 //Input   : none
 //Output  : Centigrade temperature
-//函数功能：读取MPU6050内置温度传感器数据
-//入口参数：无
-//返回  值：摄氏温度
+//鍑芥暟鍔熻兘锛氳�诲彇MPU6050鍐呯疆娓╁害浼犳劅鍣ㄦ暟鎹�
+//鍏ュ彛鍙傛暟锛氭棤
+//杩斿洖  鍊硷細鎽勬皬娓╁害
 //**************************************************************************/
 //int Read_Temperature(void)
 //{	   
 //	  float Temp;
 //	  Temp=(I2C_ReadOneByte(devAddr,MPU6050_RA_TEMP_OUT_H)<<8)+I2C_ReadOneByte(devAddr,MPU6050_RA_TEMP_OUT_L);
 //		if(Temp>32768) Temp-=65536;
-//		Temp=(36.53+Temp/340)*10;	//温度放大十倍存放
+//		Temp=(36.53+Temp/340)*10;	//娓╁害鏀惧ぇ鍗佸�嶅瓨鏀�
 //	  return (int)Temp;
 //}
 ////------------------End of File----------------------------
@@ -454,16 +454,16 @@ int16_t  MPU6050_FIFO[6][11];
 int16_t Gx_offset=0,Gy_offset=0,Gz_offset=0;
 
 
-/**************************实现函数********************************************
-*函数原型:		void  MPU6050_newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
-*功　　能:	    将新的ADC数据更新到 FIFO数组，进行滤波处理
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void  MPU6050_newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
+*鍔熴��銆�鑳�:	    灏嗘柊鐨凙DC鏁版嵁鏇存柊鍒� FIFO鏁扮粍锛岃繘琛屾护娉㈠�勭悊
 *******************************************************************************/
 
 void  MPU6050_newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
 {
 unsigned char i ;
 int32_t sum=0;
-for(i=1;i<10;i++){	//FIFO 操作
+for(i=1;i<10;i++){	//FIFO 鎿嶄綔
 MPU6050_FIFO[0][i-1]=MPU6050_FIFO[0][i];
 MPU6050_FIFO[1][i-1]=MPU6050_FIFO[1][i];
 MPU6050_FIFO[2][i-1]=MPU6050_FIFO[2][i];
@@ -471,7 +471,7 @@ MPU6050_FIFO[3][i-1]=MPU6050_FIFO[3][i];
 MPU6050_FIFO[4][i-1]=MPU6050_FIFO[4][i];
 MPU6050_FIFO[5][i-1]=MPU6050_FIFO[5][i];
 }
-MPU6050_FIFO[0][9]=ax;//将新的数据放置到 数据的最后面
+MPU6050_FIFO[0][9]=ax;//灏嗘柊鐨勬暟鎹�鏀剧疆鍒� 鏁版嵁鐨勬渶鍚庨潰
 MPU6050_FIFO[1][9]=ay;
 MPU6050_FIFO[2][9]=az;
 MPU6050_FIFO[3][9]=gx;
@@ -479,7 +479,7 @@ MPU6050_FIFO[4][9]=gy;
 MPU6050_FIFO[5][9]=gz;
 
 sum=0;
-for(i=0;i<10;i++){	//求当前数组的合，再取平均值
+for(i=0;i<10;i++){	//姹傚綋鍓嶆暟缁勭殑鍚堬紝鍐嶅彇骞冲潎鍊�
    sum+=MPU6050_FIFO[0][i];
 }
 MPU6050_FIFO[0][10]=sum/10;
@@ -515,9 +515,9 @@ for(i=0;i<10;i++){
 MPU6050_FIFO[5][10]=sum/10;
 }
 
-/**************************实现函数********************************************
-*函数原型:		void MPU6050_setClockSource(uint8_t source)
-*功　　能:	    设置  MPU6050 的时钟源
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void MPU6050_setClockSource(uint8_t source)
+*鍔熴��銆�鑳�:	    璁剧疆  MPU6050 鐨勬椂閽熸簮
  * CLK_SEL | Clock Source
  * --------+--------------------------------------
  * 0       | Internal oscillator
@@ -546,27 +546,27 @@ void MPU6050_setFullScaleGyroRange(uint8_t range) {
     IICwriteBits(devAddr, MPU6050_RA_GYRO_CONFIG, MPU6050_GCONFIG_FS_SEL_BIT, MPU6050_GCONFIG_FS_SEL_LENGTH, range);
 }
 
-/**************************实现函数********************************************
-*函数原型:		void MPU6050_setFullScaleAccelRange(uint8_t range)
-*功　　能:	    设置  MPU6050 加速度计的最大量程
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void MPU6050_setFullScaleAccelRange(uint8_t range)
+*鍔熴��銆�鑳�:	    璁剧疆  MPU6050 鍔犻�熷害璁＄殑鏈�澶ч噺绋�
 *******************************************************************************/
 void MPU6050_setFullScaleAccelRange(uint8_t range) {
     IICwriteBits(devAddr, MPU6050_RA_ACCEL_CONFIG, MPU6050_ACONFIG_AFS_SEL_BIT, MPU6050_ACONFIG_AFS_SEL_LENGTH, range);
 }
 
-/**************************实现函数********************************************
-*函数原型:		void MPU6050_setSleepEnabled(uint8_t enabled)
-*功　　能:	    设置  MPU6050 是否进入睡眠模式
-				enabled =1   睡觉
-			    enabled =0   工作
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void MPU6050_setSleepEnabled(uint8_t enabled)
+*鍔熴��銆�鑳�:	    璁剧疆  MPU6050 鏄�鍚﹁繘鍏ョ潯鐪犳ā寮�
+				enabled =1   鐫¤��
+			    enabled =0   宸ヤ綔
 *******************************************************************************/
 void MPU6050_setSleepEnabled(uint8_t enabled) {
     IICwriteBit(devAddr, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_SLEEP_BIT, enabled);
 }
 
-/**************************实现函数********************************************
-*函数原型:		uint8_t MPU6050_getDeviceID(void)
-*功　　能:	    读取  MPU6050 WHO_AM_I 标识	 将返回 0x68
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		uint8_t MPU6050_getDeviceID(void)
+*鍔熴��銆�鑳�:	    璇诲彇  MPU6050 WHO_AM_I 鏍囪瘑	 灏嗚繑鍥� 0x68
 *******************************************************************************/
 uint8_t MPU6050_getDeviceID(void) {
 
@@ -574,9 +574,9 @@ uint8_t MPU6050_getDeviceID(void) {
     return buffer[0];
 }
 
-/**************************实现函数********************************************
-*函数原型:		uint8_t MPU6050_testConnection(void)
-*功　　能:	    检测MPU6050 是否已经连接
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		uint8_t MPU6050_testConnection(void)
+*鍔熴��銆�鑳�:	    妫�娴婱PU6050 鏄�鍚﹀凡缁忚繛鎺�
 *******************************************************************************/
 uint8_t MPU6050_testConnection(void) {
    if(MPU6050_getDeviceID() == 0x68)  //0b01101000;
@@ -584,40 +584,40 @@ uint8_t MPU6050_testConnection(void) {
    	else return 0;
 }
 
-/**************************实现函数********************************************
-*函数原型:		void MPU6050_setI2CMasterModeEnabled(uint8_t enabled)
-*功　　能:	    设置 MPU6050 是否为AUX I2C线的主机
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void MPU6050_setI2CMasterModeEnabled(uint8_t enabled)
+*鍔熴��銆�鑳�:	    璁剧疆 MPU6050 鏄�鍚︿负AUX I2C绾跨殑涓绘満
 *******************************************************************************/
 void MPU6050_setI2CMasterModeEnabled(uint8_t enabled) {
     IICwriteBit(devAddr, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_I2C_MST_EN_BIT, enabled);
 }
 
-/**************************实现函数********************************************
-*函数原型:		void MPU6050_setI2CBypassEnabled(uint8_t enabled)
-*功　　能:	    设置 MPU6050 是否为AUX I2C线的主机
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void MPU6050_setI2CBypassEnabled(uint8_t enabled)
+*鍔熴��銆�鑳�:	    璁剧疆 MPU6050 鏄�鍚︿负AUX I2C绾跨殑涓绘満
 *******************************************************************************/
 void MPU6050_setI2CBypassEnabled(uint8_t enabled) {
     IICwriteBit(devAddr, MPU6050_RA_INT_PIN_CFG, MPU6050_INTCFG_I2C_BYPASS_EN_BIT, enabled);
 }
 
-/**************************实现函数********************************************
-*函数原型:		void MPU6050_initialize(void)
-*功　　能:	    初始化 	MPU6050 以进入可用状态。
+/**************************瀹炵幇鍑芥暟********************************************
+*鍑芥暟鍘熷瀷:		void MPU6050_initialize(void)
+*鍔熴��銆�鑳�:	    鍒濆�嬪寲 	MPU6050 浠ヨ繘鍏ュ彲鐢ㄧ姸鎬併��
 *******************************************************************************/
 void MPU6050_initialize(void) {
-    MPU6050_setClockSource(MPU6050_CLOCK_PLL_YGYRO); //设置时钟
-    MPU6050_setFullScaleGyroRange(MPU6050_GYRO_FS_2000);//陀螺仪量程设置
-    MPU6050_setFullScaleAccelRange(MPU6050_ACCEL_FS_2);	//加速度度最大量程 +-2G
-    MPU6050_setSleepEnabled(0); //进入工作状态
-	 MPU6050_setI2CMasterModeEnabled(0);	 //不让MPU6050 控制AUXI2C
-	 MPU6050_setI2CBypassEnabled(0);	 //主控制器的I2C与	MPU6050的AUXI2C	直通关闭
+    MPU6050_setClockSource(MPU6050_CLOCK_PLL_YGYRO); //璁剧疆鏃堕挓
+    MPU6050_setFullScaleGyroRange(MPU6050_GYRO_FS_2000);//闄�铻轰华閲忕▼璁剧疆
+    MPU6050_setFullScaleAccelRange(MPU6050_ACCEL_FS_2);	//鍔犻�熷害搴︽渶澶ч噺绋� +-2G
+    MPU6050_setSleepEnabled(0); //杩涘叆宸ヤ綔鐘舵��
+	 MPU6050_setI2CMasterModeEnabled(0);	 //涓嶈�㎝PU6050 鎺у埗AUXI2C
+	 MPU6050_setI2CBypassEnabled(0);	 //涓绘帶鍒跺櫒鐨処2C涓�	MPU6050鐨凙UXI2C	鐩撮�氬叧闂�
 }
 
 /**************************************************************************
-函数功能：MPU6050内置DMP的初始化
-入口参数：无
-返回  值：无
-作    者：平衡小车之家
+鍑芥暟鍔熻兘锛歁PU6050鍐呯疆DMP鐨勫垵濮嬪寲
+鍏ュ彛鍙傛暟锛氭棤
+杩斿洖  鍊硷細鏃�
+浣�    鑰咃細骞宠　灏忚溅涔嬪��
 **************************************************************************/
 void DMP_Init(void)
 { 
@@ -652,10 +652,10 @@ void DMP_Init(void)
 
 }
 /**************************************************************************
-函数功能：读取MPU6050内置DMP的姿态信息
-入口参数：无
-返回  值：无
-作    者：平衡小车之家
+鍑芥暟鍔熻兘锛氳�诲彇MPU6050鍐呯疆DMP鐨勫Э鎬佷俊鎭�
+鍏ュ彛鍙傛暟锛氭棤
+杩斿洖  鍊硷細鏃�
+浣�    鑰咃細骞宠　灏忚溅涔嬪��
 **************************************************************************/
 void Read_DMP(void)
 {	
@@ -676,10 +676,10 @@ void Read_DMP(void)
 
 }
 /**************************************************************************
-函数功能：读取MPU6050内置温度传感器数据
-入口参数：无
-返回  值：摄氏温度
-作    者：平衡小车之家
+鍑芥暟鍔熻兘锛氳�诲彇MPU6050鍐呯疆娓╁害浼犳劅鍣ㄦ暟鎹�
+鍏ュ彛鍙傛暟锛氭棤
+杩斿洖  鍊硷細鎽勬皬娓╁害
+浣�    鑰咃細骞宠　灏忚溅涔嬪��
 **************************************************************************/
 int Read_Temperature(void)
 {	   

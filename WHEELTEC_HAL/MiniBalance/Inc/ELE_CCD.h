@@ -1,18 +1,18 @@
 ///***********************************************
-//公司：轮趣科技(东莞)有限公司
-//品牌：WHEELTEC
-//官网：wheeltec.net
-//淘宝店铺：shop114407458.taobao.com 
-//速卖通: https://minibalance.aliexpress.com/store/4455017
-//版本：V1.0
-//修改时间：2022-09-05
+//鍏�鍙革細杞�瓒ｇ�戞妧(涓滆帪)鏈夐檺鍏�鍙�
+//鍝佺墝锛歐HEELTEC
+//瀹樼綉锛歸heeltec.net
+//娣樺疂搴楅摵锛歴hop114407458.taobao.com 
+//閫熷崠閫�: https://minibalance.aliexpress.com/store/4455017
+//鐗堟湰锛歏1.0
+//淇�鏀规椂闂达細2022-09-05
 
 //Brand: WHEELTEC
 //Website: wheeltec.net
 //Taobao shop: shop114407458.taobao.com 
 //Aliexpress: https://minibalance.aliexpress.com/store/4455017
 //Version: V1.0
-//Update：2022-09-05
+//Update锛�2022-09-05
 
 //All rights reserved
 //***********************************************/
@@ -24,32 +24,32 @@
 
 //#include "sys.h"
 
-///*******************************电磁巡线ADC**************************/
-////PA4，PA5，PC5--IN4，IN5，IN15
+///*******************************鐢电�佸贰绾緼DC**************************/
+////PA4锛孭A5锛孭C5--IN4锛孖N5锛孖N15
 
 //#define    ELE_ADC_APBxClock_FUN             	 RCC_APB2PeriphClockCmd
 //#define    ELE_ADC                          	 ADC1
 //#define    ELE_ADC_CLK                      	 RCC_APB2Periph_ADC1
 //#define    ELE_ADC_GPIO_APBxClock_FUN       	 RCC_APB2PeriphClockCmd
 
-////左路电磁巡线端口A4
+////宸﹁矾鐢电�佸贰绾跨��鍙�A4
 //#define    ELE_ADC_L_GPIO_CLK                	 RCC_APB2Periph_GPIOA  
 //#define    ELE_ADC_L_PORT                     	 GPIOA
 //#define    ELE_ADC_L_PIN                       	 GPIO_Pin_4
 
-////中间电磁巡线端口A5
+////涓�闂寸數纾佸贰绾跨��鍙�A5
 //#define    ELE_ADC_M_GPIO_CLK                	 RCC_APB2Periph_GPIOA  
 //#define    ELE_ADC_M_PORT                     	 GPIOA
 //#define    ELE_ADC_M_PIN                       	 GPIO_Pin_5
 
-////右路电磁巡线端口C5
+////鍙宠矾鐢电�佸贰绾跨��鍙�C5
 //#define    ELE_ADC_R_GPIO_CLK                	 RCC_APB2Periph_GPIOC  
 //#define    ELE_ADC_R_PORT                     	 GPIOC
 //#define    ELE_ADC_R_PIN                       	 GPIO_Pin_5
 
 
-///********************************CCD巡线***************************/
-////PA4--TSL_SI；PA5--TSL_CLK;PC5--ADC
+///********************************CCD宸＄嚎***************************/
+////PA4--TSL_SI锛汸A5--TSL_CLK;PC5--ADC
 
 ////TSL_SI
 //#define    TSL_SI_GPIO_CLK                	 	RCC_APB2Periph_GPIOA  
@@ -83,8 +83,8 @@
 //#define Barrier_Detected						1
 //#define No_Barrier								0
 
-//#define tracking_speed 0.3      //给小车一个大概0.3m/s的速度
-//#define Detect_distance 700//检测距离为700mm
+//#define tracking_speed 0.3      //缁欏皬杞︿竴涓�澶ф��0.3m/s鐨勯�熷害
+//#define Detect_distance 700//妫�娴嬭窛绂讳负700mm
 
 //extern int Sensor_Left,Sensor_Middle,Sensor_Right,Sensor;
 //extern u16  CCD_ADV[128];
@@ -98,8 +98,8 @@
 //void RD_TSL(void);
 //void  Find_CCD_Median(void);
 //void CCD_Mode(void);
-//int CCD_turn(u8 CCD,float gyro);//CCD模式转向控制
-//int ELE_turn(int encoder_left,int encoder_right,float gyro);//ELE模式转向控制
+//int CCD_turn(u8 CCD,float gyro);//CCD妯″紡杞�鍚戞帶鍒�
+//int ELE_turn(int encoder_left,int encoder_right,float gyro);//ELE妯″紡杞�鍚戞帶鍒�
 
 //u8 Detect_Barrier(void);
 

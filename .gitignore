@@ -52,7 +52,6 @@ ref
 realcar
 
 # source 
-WHEELTEC_HAL/Core/
 WHEELTEC_HAL/Drivers/
 WHEELTEC_HAL/HAREWARE/
 WHEELTEC_HAL/MDK-ARM/
