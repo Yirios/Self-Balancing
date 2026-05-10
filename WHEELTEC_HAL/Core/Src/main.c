@@ -147,20 +147,22 @@ int main(void)
   while (1)
   {
 		if(Flag_Show==0)          		//使用MiniBalance APP和OLED显示屏
-		{
-			
-			
-			if (answer_flag) {
-				APP_Show();        // 发送状态格式数据
-				answer_flag = false;
+			{
+				static u16 frame_cnt = 0;
+				frame_cnt++;
+
+				if (answer_flag) {
+					APP_Show();        // 发送状态格式数据
+					answer_flag = false;
+				}
+				// APP_Show();								//发送数据给APP
+
+				// OLED 跳帧：每 10 圈刷一次，主循环从 ~30ms 降到 ~5ms
+				if (frame_cnt % 10 == 0) {
+					oled_show();          		//显示屏打开
+					PS2_Read();						//手柄数据读取
+				}
 			}
-			// APP_Show();								//发送数据给APP
-			
-			
-			
-			oled_show();          		//显示屏打开
-			PS2_Read();								//手柄数据读取
-		}
 		else                      		//使用MiniBalance上位机 上位机使用的时候需要严格的时序，故此时关闭app监控部分和OLED显示屏
 		{
 			DataScope();          			//开启MiniBalance上位机
