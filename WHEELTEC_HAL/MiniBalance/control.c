@@ -40,10 +40,6 @@ u8 stop=0;
 float L_Bias=0,R_Bias=0;
 int Bias_interval=5;
 
-	extern volatile bool answer_flag;
-	extern float val1, val2;
-	extern u8 Control_mode;
-
 /**************************************************************************
 Function: Control function
 Input   : none
@@ -106,20 +102,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_theta_dot_2 = theta_dot_2;
 			last_theta_2 = theta_2;
 			Normal();		//普通模式
-			// 选择控制器
-			if (Control_mode == 0) {
-				// LQR 控制器（原始）
-				u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 \
-				+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
-				u_R=-(K21*(theta_L-Target_theta_L) + K22*(theta_R-Target_theta_R) + K23*(theta_1-Target_theta_1) + K24*theta_2 \
-				+ K25*(theta_L_dot-Target_theta_L_dot) + K26*(theta_R_dot-Target_theta_R_dot) + K27*theta_dot_1 + K28*theta_dot_2);
-			} else {
-				// WiFi/蓝牙外部控制
-				if (answer_flag) {
-					u_L = val1;
-					u_R = val2;
-				}
-			}
+			//计算输入变量(LQR控制器)
+			u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 			+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
+			u_R=-(K21*(theta_L-Target_theta_L) + K22*(theta_R-Target_theta_R) + K23*(theta_1-Target_theta_1) + K24*theta_2 			+ K25*(theta_L_dot-Target_theta_L_dot) + K26*(theta_R_dot-Target_theta_R_dot) + K27*theta_dot_1 + K28*theta_dot_2);
 			if ( (theta_1<0.7854 && theta_1>-0.7854) )
 			{
 				TargetVal_L = theta_L_dot + u_L*t;											//左轮的目标速度
