@@ -78,8 +78,6 @@ volatile int Steady_Flag,time_cnt=0;//稳态标定
 
 
 
-volatile bool answer_flag = true;
-
 
 
 /* USER CODE END PV */
@@ -148,35 +146,30 @@ int main(void)
   while (1)
   {
 		if(Flag_Show==0)          		//使用MiniBalance APP和OLED显示屏
+		{
+			APP_Show();						//发送数据给APP
+			PS2_Read();						//手柄数据读取
 			{
 				static u16 frame_cnt = 0;
 				frame_cnt++;
-
-				if (answer_flag) {
-					APP_Show();        // 发送状态格式数据
-					answer_flag = false;
-				}
-				// APP_Show();								//发送数据给APP
-
-				PS2_Read();							//手柄数据读取（每圈必须读）
-
-				// OLED 跳帧：每 10 圈刷一次，主循环从 ~30ms 降到 ~5ms
 				if (frame_cnt % 10 == 0) {
-					oled_show();          		//显示屏打开
+					oled_show();          		//OLED跳帧：每10圈刷一次
 				}
 			}
-		else                      		//使用MiniBalance上位机 上位机使用的时候需要严格的时序，故此时关闭app监控部分和OLED显示屏
+		}
+		else                      		//使用MiniBalance上位机
 		{
 			DataScope();          			//开启MiniBalance上位机
 		}
-		if(Lidar_Deal_Flag){			//成功接收雷达一圈的点云
-			Lidar_data_Deal();			//雷达数据处理
-			Lidar_Deal_Flag=0;			
+		if(Lidar_Deal_Flag){
+			Lidar_data_Deal();
+			Lidar_Deal_Flag=0;
 		}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
+  /* USER CODE END 3 */
   /* USER CODE END 3 */
 }
 
