@@ -146,17 +146,17 @@ int main(void)
   while (1)
   {
 		if(Flag_Show==0)          		//使用MiniBalance APP和OLED显示屏
-		{
-			APP_Show();						//发送数据给APP
-			PS2_Read();						//手柄数据读取
 			{
-				static u16 frame_cnt = 0;
-				frame_cnt++;
-				if (frame_cnt % 10 == 0) {
-					oled_show();          		//OLED跳帧：每10圈刷一次
+				PS2_Read();						//手柄数据读取（每圈必须读）
+				{
+					static u16 frame_cnt = 0;
+					frame_cnt++;
+					if (frame_cnt % 5 == 0) {
+						APP_Show();						//发送数据给APP（跳帧，防蓝牙溢出）
+						oled_show();          		//OLED跳帧：每5圈刷一次
+					}
 				}
 			}
-		}
 		else                      		//使用MiniBalance上位机
 		{
 			DataScope();          			//开启MiniBalance上位机
