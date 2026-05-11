@@ -1,7 +1,7 @@
 /**
- * Binary state telemetry — DMA USART1 TX (USB) at 200 Hz, non-blocking.
- * Packets: 42 bytes (sync + 10×float32 + checksum) at 921600 baud = 0.36ms.
- * USART1 = USB virtual COM, USART3 = WiFi/DT06 (untouched).
+ * Binary state telemetry — polling USART2 TX (USB) at 200 Hz.
+ * 42 bytes @ 921600 = 0.36ms, well within 5ms ISR budget.
+ * No DMA, no IRQ — simple and reliable.
  */
 #include "rl_send.h"
 #include "usart.h"
@@ -11,16 +11,10 @@ extern float theta_L_dot, theta_R_dot, theta_dot_1, theta_dot_2;
 extern float u_L, u_R;
 
 static uint8_t tx_buf[RL_PACKET_SIZE];
-static volatile uint8_t tx_busy = 0;
 
-void RL_Send_Init(void) {
-    tx_busy = 0;
-}
+void RL_Send_Init(void) {}
 
 void RL_Send_Data(void) {
-    if (tx_busy)
-        return;
-
     float *floats = (float *)(tx_buf + 1);
     tx_buf[0] = RL_SYNC;
 
@@ -40,12 +34,9 @@ void RL_Send_Data(void) {
         ck ^= tx_buf[i];
     tx_buf[RL_PACKET_SIZE - 1] = ck;
 
-    tx_busy = 1;
-    HAL_UART_Transmit_DMA(&huart1, tx_buf, RL_PACKET_SIZE);
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance == USART1) {
-        tx_busy = 0;
+    /* polling send — 0.36ms at 921600, no DMA dependencies */
+    for (int i = 0; i < RL_PACKET_SIZE; i++) {
+        while (!(USART2->SR & USART_SR_TXE));
+        USART2->DR = tx_buf[i];
     }
 }
