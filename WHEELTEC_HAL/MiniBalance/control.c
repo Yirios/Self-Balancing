@@ -39,6 +39,11 @@ u8 count=0;											//计数器变量
 u8 stop=0;
 float L_Bias=0,R_Bias=0;
 int Bias_interval=5;
+
+	extern volatile bool answer_flag;
+	extern float val1, val2;
+	extern u8 Control_mode;
+
 /**************************************************************************
 Function: Control function
 Input   : none
@@ -60,7 +65,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		Get_Angle(Way_Angle);                     					//更新姿态，5ms一次，更高的采样频率可以改善卡尔曼滤波和互补滤波的效果
 		count += 1;																					//计数器（10ms发布一次新的速度目标值）
 		Mode_Choose();
-		RL_Send_Data();                                             // 二进制状态发送 (200Hz, 在 return 之前)
 		if(time_cnt<1000) time_cnt++;								//控制开启后计数5s=1000*5ms，用于稳态标定，屏蔽蓝牙上电发的无用数据
 		if(Flag_Target==1)                        					//10ms控制一次
 		{
@@ -85,6 +89,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 
 		theta_1 = Angle_Balance/180.0f*PI;													//车身的倾角(rad)
 		theta_dot_1 += Gyro_Balance/16.4f*(PI/180.0f);  						//车身的倾角角速度(rad/s)(5ms). 注：陀螺仪量程转换，量程±2000°/s对应灵敏度16.4，可查手册.
+		RL_Send_Data();                                             // 二进制状态发送 (200Hz, 在 return 之前)
 		if(APP_ON&&!Steady_Flag) L_Bias=theta_L-Target_theta_L,R_Bias=theta_R-Target_theta_R,Steady_Flag=1;//稳态标定
 		if (count == 2)
 		{
@@ -101,11 +106,20 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_theta_dot_2 = theta_dot_2;
 			last_theta_2 = theta_2;
 			Normal();		//普通模式
-			//计算输入变量(LQR控制器)
-			u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 \
-			+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
-			u_R=-(K21*(theta_L-Target_theta_L) + K22*(theta_R-Target_theta_R) + K23*(theta_1-Target_theta_1) + K24*theta_2 \
-			+ K25*(theta_L_dot-Target_theta_L_dot) + K26*(theta_R_dot-Target_theta_R_dot) + K27*theta_dot_1 + K28*theta_dot_2);
+			// 选择控制器
+			if (Control_mode == 0) {
+				// LQR 控制器（原始）
+				u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 \
+				+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
+				u_R=-(K21*(theta_L-Target_theta_L) + K22*(theta_R-Target_theta_R) + K23*(theta_1-Target_theta_1) + K24*theta_2 \
+				+ K25*(theta_L_dot-Target_theta_L_dot) + K26*(theta_R_dot-Target_theta_R_dot) + K27*theta_dot_1 + K28*theta_dot_2);
+			} else {
+				// WiFi/蓝牙外部控制
+				if (answer_flag) {
+					u_L = val1;
+					u_R = val2;
+				}
+			}
 			if ( (theta_1<0.7854 && theta_1>-0.7854) )
 			{
 				TargetVal_L = theta_L_dot + u_L*t;											//左轮的目标速度
@@ -455,4 +469,15 @@ int Lidar_Avoid(void)
 	return Avoid_Stop;//不需避障
 }
 
+// 初始化RL模型
+void RL_Model_Init() {
+}
+
+// RL控制器 — 神经网络推理
+void RL_Controller() {
+	// 部署时取消注释：
+	// #include "balance_nn.h"
+	// float v_cmd = (Target_theta_L_dot + Target_theta_R_dot) * 0.01675f;
+	// ...
+}
 
