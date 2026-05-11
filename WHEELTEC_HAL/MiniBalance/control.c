@@ -60,6 +60,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		Get_Angle(Way_Angle);                     					//更新姿态，5ms一次，更高的采样频率可以改善卡尔曼滤波和互补滤波的效果
 		count += 1;																					//计数器（10ms发布一次新的速度目标值）
 		Mode_Choose();
+		RL_Send_Data();                                             // 二进制状态发送 (200Hz, 在 return 之前)
 		if(time_cnt<1000) time_cnt++;								//控制开启后计数5s=1000*5ms，用于稳态标定，屏蔽蓝牙上电发的无用数据
 		if(Flag_Target==1)                        					//10ms控制一次
 		{
@@ -127,7 +128,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		Motor_Left=PWM_L;                              //左电机PWM
 		Motor_Right=PWM_R;                             //右电机PWM
 		Set_Pwm(PWM_L,PWM_R);	                       //赋值给PWM寄存器
-			RL_Send_Data();                                 // DMA 二进制状态发送 (200Hz)
 		//拨码急停开关
 		Flag_Stop=KEY2_STATE;
 		if(Voltage<10) Flag_Stop = 1;
