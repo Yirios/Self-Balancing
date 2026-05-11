@@ -455,12 +455,9 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
   }
   else if(uartHandle->Instance==USART2)
   {
-    __HAL_RCC_USART2_CLK_ENABLE();
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    GPIO_InitStruct.Pin = GPIO_PIN_2;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    /* USART2 peripheral clock disable */
+    __HAL_RCC_USART2_CLK_DISABLE();
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2);
   }
   else if(uartHandle->Instance==USART3)
   {
