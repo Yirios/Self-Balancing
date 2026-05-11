@@ -17,6 +17,7 @@ Update：2023-05-25
 All rights reserved
 ***********************************************/
 #include "control.h"
+#include "rl_send.h"
 short Accel_Y,Accel_Z,Accel_X,Accel_Angle_x,Accel_Angle_y,Gyro_X,Gyro_Z,Gyro_Y;
 //LQR状态反馈系数
 float K11=81.2695, K12=-10.0616, K13=-5492.4061, K14=18921.7098, K15=100.3633, K16=8.0376, K17=447.3084, K18=2962.7738;
@@ -126,6 +127,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		Motor_Left=PWM_L;                              //左电机PWM
 		Motor_Right=PWM_R;                             //右电机PWM
 		Set_Pwm(PWM_L,PWM_R);	                       //赋值给PWM寄存器
+			RL_Send_Data();                                 // DMA 二进制状态发送 (200Hz)
 		//拨码急停开关
 		Flag_Stop=KEY2_STATE;
 		if(Voltage<10) Flag_Stop = 1;

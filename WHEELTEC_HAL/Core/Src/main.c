@@ -157,10 +157,11 @@ int main(void)
 				}
 				// APP_Show();								//发送数据给APP
 
+				PS2_Read();							//手柄数据读取（每圈必须读）
+
 				// OLED 跳帧：每 10 圈刷一次，主循环从 ~30ms 降到 ~5ms
 				if (frame_cnt % 10 == 0) {
 					oled_show();          		//显示屏打开
-					PS2_Read();						//手柄数据读取
 				}
 			}
 		else                      		//使用MiniBalance上位机 上位机使用的时候需要严格的时序，故此时关闭app监控部分和OLED显示屏
