@@ -1,18 +1,20 @@
 """
-Receive 200 Hz binary telemetry from WHEELTEC robot over WiFi TCP.
+Receive 200 Hz binary telemetry from WHEELTEC robot over USB serial (USART1).
 
 Protocol: [0xDD] [10×float32 LE] [XOR checksum] = 42 bytes
 Floats: theta_L,theta_R,theta_1,theta_2,thetadot_L,thetadot_R,thetadot_1,thetadot_2,u_L,u_R
 
 Usage:
-    python read_bin.py                  # WiFi TCP (default: 192.168.4.1:6390)
-    python read_bin.py -t 30 -o log.csv # 30 seconds, save to log.csv
+    python read_bin.py                       # auto-detect USB serial port
+    python read_bin.py -s COM3               # Windows
+    python read_bin.py -s /dev/ttyUSB0       # Linux
+    python read_bin.py --tcp 192.168.4.1    # WiFi (legacy)
 """
 import argparse
-import socket
 import struct
 import csv
 import time
+import sys
 
 SYNC = 0xDD
 PACKET_SIZE = 42
@@ -24,29 +26,15 @@ FIELDS = [
 ]
 
 
-def receive(host: str, port: int, duration: float, output: str):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(3)
-    print(f"Connecting to {host}:{port}...")
-
+def read_serial(port: str, baud: int, duration: float, output: str):
     try:
-        s.connect((host, port))
-    except OSError:
-        for p in [6390, 8080, 333]:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(3)
-                s.connect((host, p))
-                port = p
-                print(f"Connected on port {p}")
-                break
-            except OSError:
-                continue
-        else:
-            print("Could not connect.")
-            return
+        import serial
+    except ImportError:
+        print("pyserial not installed. Run: pip install pyserial")
+        return
 
-    print(f"Receiving binary packets for {duration}s...")
+    print(f"Opening {port} @ {baud} baud...")
+    ser = serial.Serial(port, baud, timeout=1)
 
     with open(output, "w", newline="") as f:
         writer = csv.writer(f)
@@ -54,72 +42,95 @@ def receive(host: str, port: int, duration: float, output: str):
 
         buf = b""
         t_start = time.monotonic()
-        count = 0
-        lost = 0
-        last_seq = -1
+        count = lost = 0
 
         while time.monotonic() - t_start < duration:
-            try:
-                data = s.recv(512)
-                if not data:
+            n = ser.in_waiting or 1
+            buf += ser.read(n)
+
+            while len(buf) >= PACKET_SIZE:
+                sync_idx = buf.find(bytes([SYNC]))
+                if sync_idx < 0:
+                    buf = buf[-PACKET_SIZE:]
                     break
-                buf += data
+                if len(buf) - sync_idx < PACKET_SIZE:
+                    break
 
-                while len(buf) >= PACKET_SIZE:
-                    sync_idx = buf.find(bytes([SYNC]))
-                    if sync_idx < 0:
-                        buf = buf[-PACKET_SIZE:]  # keep tail
-                        break
+                raw = buf[sync_idx : sync_idx + PACKET_SIZE]
+                ck = 0
+                for b in raw[:-1]:
+                    ck ^= b
+                if ck != raw[-1]:
+                    lost += 1
+                    buf = buf[sync_idx + 1 :]
+                    continue
 
-                    if len(buf) - sync_idx < PACKET_SIZE:
-                        break  # incomplete
+                floats = struct.unpack("<10f", raw[1:41])
+                t = time.monotonic() - t_start
+                writer.writerow([f"{t:.4f}"] + [f"{v:.6f}" for v in floats])
+                count += 1
 
-                    raw = buf[sync_idx : sync_idx + PACKET_SIZE]
+                if count % 500 == 0:
+                    print(f"  {t:.1f}s: {count} pkts ({count/t:.0f} Hz), lost={lost}")
 
-                    # Verify checksum
-                    ck = 0
-                    for b in raw[:-1]:
-                        ck ^= b
-                    if ck != raw[-1]:
-                        lost += 1
-                        buf = buf[sync_idx + 1 :]
-                        continue
+                buf = buf[sync_idx + PACKET_SIZE :]
 
-                    floats = struct.unpack("<10f", raw[1:41])
-                    t = time.monotonic() - t_start
-                    writer.writerow([f"{t:.4f}"] + [f"{v:.6f}" for v in floats])
-                    count += 1
-
-                    if count % 500 == 0:
-                        print(
-                            f"  {t:.1f}s: {count} pkts ({count/t:.0f} Hz), "
-                            f"lost={lost}, "
-                            f"theta_1={floats[2]:.4f} rad"
-                        )
-
-                    buf = buf[sync_idx + PACKET_SIZE :]
-
-            except socket.timeout:
-                continue
-            except Exception as e:
-                print(f"Error: {e}")
-                break
-
-    s.close()
+    ser.close()
     elapsed = time.monotonic() - t_start
-    print(
-        f"Done. {count} packets ({count/elapsed:.0f} Hz), "
-        f"{lost} checksum errors -> {output}"
-    )
+    print(f"Done. {count} pkts ({count/elapsed:.0f} Hz), {lost} chk errors -> {output}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Receive 200 Hz binary telemetry from WHEELTEC robot"
     )
-    parser.add_argument("--host", default="192.168.4.1", help="WiFi module IP")
-    parser.add_argument("-p", "--port", type=int, default=6390, help="TCP port")
+    parser.add_argument("-s", "--serial", type=str, default=None,
+                        help="USB serial port (e.g. COM3, /dev/ttyUSB0)")
+    parser.add_argument("-b", "--baud", type=int, default=921600)
     parser.add_argument("-t", "--time", type=float, default=30.0, help="Duration (s)")
     parser.add_argument("-o", "--output", default="binary_log.csv", help="Output CSV")
+    parser.add_argument("--tcp", type=str, default=None, help="WiFi IP (legacy)")
+    parser.add_argument("-p", "--port", type=int, default=6390)
     args = parser.parse_args()
-    receive(args.host, args.port, args.time, args.output)
+
+    if args.tcp:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(3)
+        s.connect((args.tcp, args.port))
+        print(f"WiFi mode: {args.tcp}:{args.port}")
+        buf = b""
+        t0 = time.monotonic()
+        count = 0
+        with open(args.output, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(FIELDS)
+            while time.monotonic() - t0 < args.time:
+                buf += s.recv(512)
+                while len(buf) >= PACKET_SIZE:
+                    idx = buf.find(bytes([SYNC]))
+                    if idx < 0: buf = buf[-PACKET_SIZE:]; break
+                    if len(buf) - idx < PACKET_SIZE: break
+                    raw = buf[idx:idx+PACKET_SIZE]
+                    buf = buf[idx+PACKET_SIZE:]
+                    ck = 0
+                    for b in raw[:-1]: ck ^= b
+                    if ck != raw[-1]: continue
+                    vals = struct.unpack("<10f", raw[1:41])
+                    w.writerow([f"{time.monotonic()-t0:.4f}"] + [f"{v:.6f}" for v in vals])
+                    count += 1
+        s.close()
+        print(f"Done. {count} pkts -> {args.output}")
+    else:
+        port = args.serial
+        if port is None:
+            # auto-detect
+            import glob
+            candidates = glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
+            if not candidates:
+                candidates = [f"COM{i}" for i in range(1, 20)]
+                print("Auto-detect not supported on this platform. Use -s COMx")
+                sys.exit(1)
+            port = candidates[0]
+            print(f"Auto-detected: {port}")
+        read_serial(port, args.baud, args.time, args.output)
