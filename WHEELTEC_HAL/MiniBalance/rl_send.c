@@ -1,5 +1,5 @@
 /**
- * Binary state telemetry — polling USART2 TX (USB) at 200 Hz.
+ * Binary state telemetry — polling USART1 TX (USB) at 200 Hz.
  * 42 bytes @ 921600 = 0.36ms, well within 5ms ISR budget.
  * No DMA, no IRQ — simple and reliable.
  */
@@ -36,7 +36,7 @@ void RL_Send_Data(void) {
 
     /* polling send — 0.36ms at 921600, no DMA dependencies */
     for (int i = 0; i < RL_PACKET_SIZE; i++) {
-        while (!(USART2->SR & USART_SR_TXE));
-        USART2->DR = tx_buf[i];
+        while (!(USART1->SR & USART_SR_TXE));
+        USART1->DR = tx_buf[i];
     }
 }
