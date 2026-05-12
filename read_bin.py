@@ -44,10 +44,10 @@ def read_serial(port: str, baud: int, duration: float, output: str):
         writer.writerow(FIELDS)
 
         buf = b""
-        t_start = time.monotonic()
+        t_start = time.perf_counter()
         count = lost = 0
 
-        while time.monotonic() - t_start < duration:
+        while time.perf_counter() - t_start < duration:
             n = ser.in_waiting or 1
             buf += ser.read(n)
 
@@ -69,8 +69,8 @@ def read_serial(port: str, baud: int, duration: float, output: str):
                     continue
 
                 floats = struct.unpack("<16f", raw[1:65])
-                t = time.monotonic() - t_start
-                writer.writerow([f"{t:.4f}"] + [f"{v:.6f}" for v in floats])
+                t = time.perf_counter() - t_start
+                writer.writerow([f"{t:.6f}"] + [f"{v:.6f}" for v in floats])
                 count += 1
 
                 if count % 500 == 0:
@@ -79,7 +79,7 @@ def read_serial(port: str, baud: int, duration: float, output: str):
                 buf = buf[sync_idx + PACKET_SIZE :]
 
     ser.close()
-    elapsed = time.monotonic() - t_start
+    elapsed = time.perf_counter() - t_start
     print(f"Done. {count} pkts ({count/elapsed:.0f} Hz), {lost} chk errors -> {output}")
 
 
@@ -103,12 +103,12 @@ if __name__ == "__main__":
         s.connect((args.tcp, args.port))
         print(f"WiFi mode: {args.tcp}:{args.port}")
         buf = b""
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         count = 0
         with open(args.output, "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(FIELDS)
-            while time.monotonic() - t0 < args.time:
+            while time.perf_counter() - t0 < args.time:
                 buf += s.recv(512)
                 while len(buf) >= PACKET_SIZE:
                     idx = buf.find(bytes([SYNC]))
@@ -120,7 +120,7 @@ if __name__ == "__main__":
                     for b in raw[:-1]: ck ^= b
                     if ck != raw[-1]: continue
                     vals = struct.unpack("<16f", raw[1:65])
-                    w.writerow([f"{time.monotonic()-t0:.4f}"] + [f"{v:.6f}" for v in vals])
+                    w.writerow([f"{time.perf_counter()-t0:.6f}"] + [f"{v:.6f}" for v in vals])
                     count += 1
         s.close()
         print(f"Done. {count} pkts -> {args.output}")

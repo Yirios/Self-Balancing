@@ -117,13 +117,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 				PWM_L = 0;
 				PWM_R = 0;
 			}
+			RL_Send_Data();                                         // 100Hz, theta_dot_1 still valid here
 			theta_dot_1 = 0;
 		}
 		if(Mode==Normal_Mode)	Led_Flash(100);         //LED闪烁;常规模式 1s改变一次指示灯的状态
 		else Led_Flash(0);                              //LED常亮;其余模式
 		PWM_L=PWM_Limit(PWM_L,6900,-6900);		  		//PWM限幅
 		PWM_R=PWM_Limit(PWM_R,6900,-6900);		  		//PWM限幅
-		RL_Send_Data();                                         // 100Hz binary telemetry (TargetVal+PWM ready)
 		Motor_Left=PWM_L;                              //左电机PWM
 		Motor_Right=PWM_R;                             //右电机PWM
 		Set_Pwm(PWM_L,PWM_R);	                       //赋值给PWM寄存器
