@@ -85,7 +85,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 
 		theta_1 = Angle_Balance/180.0f*PI;													//车身的倾角(rad)
 		theta_dot_1 += Gyro_Balance/16.4f*(PI/180.0f);  						//车身的倾角角速度(rad/s)(5ms). 注：陀螺仪量程转换，量程±2000°/s对应灵敏度16.4，可查手册.
-		RL_Send_Data();                                             // 二进制状态发送 (200Hz, 在 return 之前)
 		if(APP_ON&&!Steady_Flag) L_Bias=theta_L-Target_theta_L,R_Bias=theta_R-Target_theta_R,Steady_Flag=1;//稳态标定
 		if (count == 2)
 		{
@@ -124,6 +123,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		else Led_Flash(0);                              //LED常亮;其余模式
 		PWM_L=PWM_Limit(PWM_L,6900,-6900);		  		//PWM限幅
 		PWM_R=PWM_Limit(PWM_R,6900,-6900);		  		//PWM限幅
+		RL_Send_Data();                                         // 100Hz binary telemetry (TargetVal+PWM ready)
 		Motor_Left=PWM_L;                              //左电机PWM
 		Motor_Right=PWM_R;                             //右电机PWM
 		Set_Pwm(PWM_L,PWM_R);	                       //赋值给PWM寄存器

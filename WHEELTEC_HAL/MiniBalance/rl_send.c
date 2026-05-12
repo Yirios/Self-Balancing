@@ -1,6 +1,6 @@
 /**
  * Binary state telemetry — polling USART1 TX at 100 Hz.
- * 12×float32 + sync + checksum = 50 bytes. @460800 = 1.09ms per packet.
+ * 16×float32 + sync + checksum = 66 bytes. @460800 = 1.43ms per packet.
  */
 #include "rl_send.h"
 #include "usart.h"
@@ -9,6 +9,8 @@ extern float theta_L, theta_R, theta_1, theta_2;
 extern float theta_L_dot, theta_R_dot, theta_dot_1, theta_dot_2;
 extern float u_L, u_R;
 extern float Target_theta_L, Target_theta_R;
+extern float TargetVal_L, TargetVal_R;
+extern int PWM_L, PWM_R;
 
 static uint8_t tx_buf[RL_PACKET_SIZE];
 
@@ -30,6 +32,10 @@ void RL_Send_Data(void) {
     f[9]  = u_R;
     f[10] = Target_theta_L;
     f[11] = Target_theta_R;
+    f[12] = TargetVal_L;
+    f[13] = TargetVal_R;
+    f[14] = (float)PWM_L;
+    f[15] = (float)PWM_R;
 
     uint8_t ck = 0;
     for (int i = 0; i < RL_PACKET_SIZE - 1; i++)

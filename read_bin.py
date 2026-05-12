@@ -1,9 +1,9 @@
 """
 Receive binary telemetry from WHEELTEC robot over USB serial (USART1).
 
-Protocol: [0xDD] [12×float32 LE] [XOR checksum] = 62 bytes
+Protocol: [0xDD] [16×float32 LE] [XOR checksum] = 66 bytes
 Floats: theta_L,theta_R,theta_1,theta_2,thetadot_L/R/dot_1/dot_2,u_L,u_R,
-        Target_theta_L/R/dot_L/dot_R/1
+        Target_theta_L/R, TargetVal_L/R, PWM_L/R
 
 Usage:
     python read_bin.py                       # auto-detect USB serial port
@@ -17,13 +17,15 @@ import time
 import sys
 
 SYNC = 0xDD
-PACKET_SIZE = 50
+PACKET_SIZE = 66
 FIELDS = [
     "time_s",
     "theta_L", "theta_R", "theta_1", "theta_2",
     "theta_L_dot", "theta_R_dot", "theta_dot_1", "theta_dot_2",
     "u_L", "u_R",
     "Target_theta_L", "Target_theta_R",
+    "TargetVal_L", "TargetVal_R",
+    "PWM_L", "PWM_R",
 ]
 
 
@@ -66,7 +68,7 @@ def read_serial(port: str, baud: int, duration: float, output: str):
                     buf = buf[sync_idx + 1 :]
                     continue
 
-                floats = struct.unpack("<12f", raw[1:49])
+                floats = struct.unpack("<16f", raw[1:65])
                 t = time.monotonic() - t_start
                 writer.writerow([f"{t:.4f}"] + [f"{v:.6f}" for v in floats])
                 count += 1
@@ -117,7 +119,7 @@ if __name__ == "__main__":
                     ck = 0
                     for b in raw[:-1]: ck ^= b
                     if ck != raw[-1]: continue
-                    vals = struct.unpack("<12f", raw[1:49])
+                    vals = struct.unpack("<16f", raw[1:65])
                     w.writerow([f"{time.monotonic()-t0:.4f}"] + [f"{v:.6f}" for v in vals])
                     count += 1
         s.close()
