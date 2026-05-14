@@ -9,14 +9,13 @@ from stable_baselines3.common.monitor import Monitor
 from pretrain_bc import BCModel, load_bc_into_ppo
 from kl_ppo import KLRegularizedPPO, BCReference
 
-BC_COEF = 0.01  # BC regularization strength
-
+BC_COEF = 0.01
+H_SCALE = 0.35  # effective wheel acceleration gain vs original H[4,0]=0.01
 
 def make_env(inject_noise=False, domain_rand_scale=0.0):
-    return Monitor(
-        gym.make("BalancingRobot-v0",
-                 inject_noise=inject_noise, domain_rand_scale=domain_rand_scale)
-    )
+    return Monitor(gym.make("BalancingRobot-v0",
+        inject_noise=inject_noise, domain_rand_scale=domain_rand_scale,
+        h_scale=H_SCALE))
 
 
 if __name__ == "__main__":
