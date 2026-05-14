@@ -12,7 +12,6 @@ from .dynamics import (
 _A, _B, _G, _H = compute_state_space()
 _K = get_lqr_gains()
 
-# Sensor noise std per 10ms step, calibrated from real car steady-state data
 NOISE_STD = np.array(
     [0.0020, 0.0019, 0.0010, 0.0022, 0.0912, 0.0836, 0.0270, 0.1058]
 )
@@ -22,9 +21,8 @@ class BalancingRobotEnv(gymnasium.Env):
     """
     Two-wheeled self-balancing robot with position targets.
 
-    Obs (10D): [theta_L, theta_R, theta_1, theta_2,
-                theta_L_dot, theta_R_dot, theta_1_dot, theta_2_dot,
-                target_theta_L, target_theta_R]
+    Obs (8D): [thL-targetL, thR-targetR, theta_1, theta_2,
+               theta_L_dot, theta_R_dot, theta_1_dot, theta_2_dot]
     Actions (2D): [u_L, u_R] — wheel angular accelerations (rad/s²)
     """
 
@@ -40,7 +38,7 @@ class BalancingRobotEnv(gymnasium.Env):
     ):
         super().__init__()
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(10,), dtype=np.float64
+            low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64
         )
         self.action_space = spaces.Box(
             low=-5000.0, high=5000.0, shape=(2,), dtype=np.float64
@@ -63,10 +61,9 @@ class BalancingRobotEnv(gymnasium.Env):
         self.target_theta_L = 0.0
         self.target_theta_R = 0.0
 
-        # Reward: Q_diag heavily weights tilt (theta_1, theta_2) and angular velocities
         self.Q_diag = np.array([0.01, 0.01, 10.0, 50.0, 0.001, 0.001, 5.0, 5.0])
         self.R_weight = 1e-5
-        self.w_pos = 0.1  # position tracking weight
+        self.w_pos = 0.1
 
         self.window = None
         self.clock = None
@@ -81,7 +78,6 @@ class BalancingRobotEnv(gymnasium.Env):
         self.x_hist = [0.0]
         self.y_hist = [0.0]
 
-        # Domain randomization
         if self.domain_rand_scale > 0:
             s = self.domain_rand_scale
             m1 = M_1 * (1.0 + self.np_random.uniform(-s, s))
@@ -98,15 +94,10 @@ class BalancingRobotEnv(gymnasium.Env):
             self.H = _H
             self.WHEEL_BASE = 0.16
 
-        # Position targets (rad).  Target_theta_L/R are the LQR position reference.
-        # During free balance: both near 0.  During driving: they diverge.
         if options is not None and "target_theta_L" in options:
             self.target_theta_L = options["target_theta_L"]
             self.target_theta_R = options.get("target_theta_R", self.target_theta_L)
         else:
-            # 30% chance: pure balance (both 0)
-            # 50% chance: straight line (same target, non-zero)
-            # 20% chance: turn (different targets)
             r = self.np_random.random()
             if r < 0.3:
                 self.target_theta_L = 0.0
@@ -119,13 +110,14 @@ class BalancingRobotEnv(gymnasium.Env):
                 self.target_theta_L = float(self.np_random.uniform(-20, 20))
                 self.target_theta_R = float(self.np_random.uniform(-20, 20))
 
-        # Initial state
         if options is not None and options.get("matlab_ic", False):
             self.state = np.array(
                 [0.0, 0.0, -0.1745, 0.1745, 0.0, 0.0, 0.0, 0.0]
             )
         else:
             self.state = np.zeros(8)
+            self.state[0] = self.np_random.uniform(-60, 60)  # theta_L: covers real-car startup error
+            self.state[1] = self.np_random.uniform(-60, 60)
             self.state[2] = self.np_random.uniform(-0.1745, 0.1745)
             self.state[3] = self.np_random.uniform(-0.1745, 0.1745)
             self.state[4:8] = self.np_random.uniform(-0.1, 0.1, size=4)
@@ -133,7 +125,14 @@ class BalancingRobotEnv(gymnasium.Env):
         return self._get_obs(), {}
 
     def _get_obs(self):
-        return np.concatenate([self.state, [self.target_theta_L, self.target_theta_R]])
+        """8D obs: position errors + physical states."""
+        return np.array([
+            self.state[0] - self.target_theta_L,
+            self.state[1] - self.target_theta_R,
+            self.state[2], self.state[3],
+            self.state[4], self.state[5],
+            self.state[6], self.state[7],
+        ])
 
     def step(self, action: np.ndarray):
         action = np.clip(action, self.action_space.low, self.action_space.high)
@@ -146,7 +145,6 @@ class BalancingRobotEnv(gymnasium.Env):
 
         x = self.state
 
-        # Quadratic state + control cost
         state_cost = float(x @ np.diag(self.Q_diag) @ x)
         control_cost = self.R_weight * float(u @ u)
         reward = -(state_cost + control_cost)
@@ -158,11 +156,9 @@ class BalancingRobotEnv(gymnasium.Env):
             u_lqr = -self.K @ (x - x_ref)
             reward -= self.bc_beta * float(np.sum((u - u_lqr) ** 2))
 
-        # Position tracking penalty
         pos_err = (x[0] - self.target_theta_L) ** 2 + (x[1] - self.target_theta_R) ** 2
         reward -= self.w_pos * pos_err
 
-        # Global position (for 3D visualization)
         v_fwd = (R * x[4] + R * x[5]) / 2.0
         omega = (R * x[5] - R * x[4]) / self.WHEEL_BASE
         self.yaw += omega * TS
@@ -187,8 +183,6 @@ class BalancingRobotEnv(gymnasium.Env):
                 "theta_1": theta_1,
                 "theta_2": theta_2,
                 "cost": -reward,
-                "target_theta_L": self.target_theta_L,
-                "target_theta_R": self.target_theta_R,
             },
         )
 

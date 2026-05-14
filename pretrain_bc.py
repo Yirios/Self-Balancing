@@ -1,4 +1,4 @@
-"""Pre-train a policy via behavior cloning — sim demonstrations + real data fine-tune."""
+"""Pre-train a policy via behavior cloning — sim demos + real data fine-tune."""
 import csv
 import numpy as np
 import torch
@@ -23,23 +23,26 @@ REAL_FILES = [
 
 
 def load_real_data():
-    """Load (obs, action) from real car LQR data.  obs = [8 states, target_θ_L/R]."""
+    """obs (8D) = [thL-targetL, thR-targetR, th1, th2, thdotL, thdotR, thdot1, thdot2]."""
     obs_list, act_list = [], []
     for fn in REAL_FILES:
         with open(fn) as f:
             rows = list(csv.DictReader(f))
         for r in rows:
             state = np.array([float(r[n]) for n in STATE_NAMES], dtype=np.float32)
-            obs_list.append(np.concatenate([
-                state, [float(r["Target_theta_L"]), float(r["Target_theta_R"])]
-            ]))
+            target_L = float(r["Target_theta_L"])
+            target_R = float(r["Target_theta_R"])
+            obs_list.append(np.array([
+                state[0] - target_L, state[1] - target_R,
+                state[2], state[3], state[4], state[5], state[6], state[7],
+            ], dtype=np.float32))
             act_list.append([float(r["u_L"]), float(r["u_R"])])
     print(f"Real data: {len(obs_list)} samples from {len(REAL_FILES)} files")
     return np.array(obs_list, dtype=np.float32), np.array(act_list, dtype=np.float32)
 
 
 def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
-    """LQR + OU noise in simulation — covers recovery from perturbations."""
+    """LQR + OU noise in simulation."""
     obs_list, act_list = [], []
     env = BalancingRobotEnv(inject_noise=False, domain_rand_scale=0.0)
 
@@ -49,8 +52,10 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
         ou = np.zeros(2)
 
         while not done:
-            x = obs[:8]
-            x_ref = np.array([obs[8], obs[9], 0, 0, 0, 0, 0, 0])
+            # LQR with position reference
+            x = env.unwrapped.state
+            x_ref = np.array([env.unwrapped.target_theta_L,
+                              env.unwrapped.target_theta_R, 0, 0, 0, 0, 0, 0])
             u_lqr = -K @ (x - x_ref)
 
             ou += -0.3 * ou * 0.01 + 0.1 * np.random.randn(2) * np.sqrt(0.01)
@@ -72,11 +77,11 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
 
 
 class BCModel(nn.Module):
-    """MLP 10→32→32→2."""
+    """MLP 8→32→32→2."""
 
     def __init__(self):
         super().__init__()
-        self.features = nn.Sequential(nn.Linear(10, 32), nn.ReLU())
+        self.features = nn.Sequential(nn.Linear(8, 32), nn.ReLU())
         self.policy_net = nn.Sequential(nn.Linear(32, 32), nn.ReLU())
         self.action_net = nn.Linear(32, 2)
 
@@ -103,15 +108,13 @@ def train_bc(model, X, Y, epochs, lr=1e-3, label=""):
             optimizer.step()
             total += loss.item() * len(bx)
         if (epoch + 1) % 10 == 0:
-            print(f"  {label} epoch {epoch + 1}/{epochs}: loss={total / len(X):.1f}")
-
-    with torch.no_grad():
-        mae = (model(torch.from_numpy(X).to(DEVICE)) - torch.from_numpy(Y).to(DEVICE)).abs().mean().item()
-    print(f"  {label} final MAE: {mae:.2f}")
+            with torch.no_grad():
+                mae = (model(torch.from_numpy(X).to(DEVICE)) -
+                       torch.from_numpy(Y).to(DEVICE)).abs().mean().item()
+            print(f"  {label} epoch {epoch + 1}/{epochs}: loss={total/len(X):.1f}  mae={mae:.2f}")
 
 
 def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
-    """Copy BC weights into PPO's policy_net and action_net."""
     ppo_pn = ppo_model.policy.mlp_extractor.policy_net
 
     def _copy(dst, src):
@@ -147,15 +150,15 @@ def eval_bc(bc_model: BCModel, n_episodes: int = 20):
 
 
 if __name__ == "__main__":
-    print("Phase 1: Simulated LQR+OU demos (learn recovery)")
+    print("Phase 1: Simulated LQR+OU demos")
     sim_obs, sim_act = collect_sim_demos(200)
 
     model = BCModel().to(DEVICE)
     train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim")
 
-    print("\nPhase 2: Real car data (fine-tune steady-state behavior)")
+    print("\nPhase 2: Real car data (light fine-tune)")
     real_obs, real_act = load_real_data()
-    train_bc(model, real_obs, real_act, epochs=30, lr=2e-4, label="real")
+    train_bc(model, real_obs, real_act, epochs=5, lr=1e-5, label="real")
 
     print("\nEvaluating...")
     eval_bc(model)

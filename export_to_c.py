@@ -39,8 +39,8 @@ def export(model_path: str, output_path: str = "balance_nn.h"):
     H1, H2 = weights[0].shape[0], weights[1].shape[0]
     OUT = weights[2].shape[0]
     IN = weights[0].shape[1]
-    if IN != 10:
-        print(f"  WARNING: input dim={IN}, expected 10 for velocity-command env")
+    if IN != 8:
+        print(f"  WARNING: input dim={IN}, expected 8")
     print(f"Architecture: {IN} → {H1} → {H2} → {OUT}")
     print(f"Total params: {sum(w.size + b.size for w, b in zip(weights, biases))}")
 
@@ -110,7 +110,7 @@ def export(model_path: str, output_path: str = "balance_nn.h"):
 
     # --- Numerical verification ---
     test_input = np.array(
-        [0.1, -0.05, 0.15, -0.10, 0.02, 0.03, -0.01, 0.0, 0.2, -0.5],
+        [0.1, -0.05, 0.15, -0.10, 0.02, 0.03, -0.01, 0.0],
         dtype=np.float32,
     )
 
