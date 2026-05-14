@@ -32,9 +32,6 @@ logs/
 best_model/
 best_model_reg/
 
-# Generated C headers
-balance_nn*.h
-
 # Generated animations
 assets/
 
@@ -59,3 +56,6 @@ WHEELTEC_HAL/SYSTEM/
 WHEELTEC_HAL/.mxproject
 WHEELTEC_HAL/keilkilll.bat
 WHEELTEC_HAL/MiniBalance.ioc
+
+# CLAUDE
+CLAUDE.md

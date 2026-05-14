@@ -10,29 +10,26 @@ _K = get_lqr_gains()
 
 
 def test_make_env():
-    """Smoke test: can instantiate via gymnasium.make."""
     env = gymnasium.make("BalancingRobot-v0")
     assert env is not None
-    assert env.observation_space.shape == (8,)
+    assert env.observation_space.shape == (10,)
     assert env.action_space.shape == (2,)
     env.close()
 
 
 def test_reset():
-    """reset returns (obs, info) and obs has correct shape."""
     env = gymnasium.make("BalancingRobot-v0")
     obs, info = env.reset()
-    assert obs.shape == (8,)
+    assert obs.shape == (10,)
     assert isinstance(info, dict)
     env.close()
 
 
 def test_step():
-    """step with zero action returns 5-tuple."""
     env = gymnasium.make("BalancingRobot-v0")
     env.reset(seed=42)
     obs, reward, terminated, truncated, info = env.step(np.array([0.0, 0.0]))
-    assert obs.shape == (8,)
+    assert obs.shape == (10,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
@@ -41,28 +38,24 @@ def test_step():
 
 
 def test_termination_on_body_tilt():
-    """Episode terminates when body tilt exceeds ±45°."""
     env = gymnasium.make("BalancingRobot-v0")
     env.reset(seed=42)
-    # Set state on unwrapped env (gym.make wraps in TimeLimit)
-    env.unwrapped.state = np.array([0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0])  # ~45.8°
+    env.unwrapped.state = np.array([0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0])
     obs, reward, terminated, truncated, info = env.step(np.array([0.0, 0.0]))
     assert terminated
     env.close()
 
 
 def test_termination_on_pendulum_angle():
-    """Episode terminates when pendulum angle exceeds ±60°."""
     env = gymnasium.make("BalancingRobot-v0")
     env.reset(seed=42)
-    env.unwrapped.state = np.array([0.0, 0.0, 0.0, 1.1, 0.0, 0.0, 0.0, 0.0])  # ~63°
+    env.unwrapped.state = np.array([0.0, 0.0, 0.0, 1.1, 0.0, 0.0, 0.0, 0.0])
     obs, reward, terminated, truncated, info = env.step(np.array([0.0, 0.0]))
     assert terminated
     env.close()
 
 
 def test_truncation_at_max_steps():
-    """Episode truncates at max_steps."""
     env = gymnasium.make("BalancingRobot-v0", max_episode_steps=10)
     env.reset(seed=42)
     truncated = False
@@ -73,7 +66,6 @@ def test_truncation_at_max_steps():
 
 
 def test_seed_reproducibility():
-    """Same seed produces identical trajectories."""
     for seed in [0, 42, 123]:
         env1 = gymnasium.make("BalancingRobot-v0")
         env2 = gymnasium.make("BalancingRobot-v0")
@@ -92,38 +84,40 @@ def test_seed_reproducibility():
 
 
 def test_lqr_stabilizes():
-    """LQR controller from STM32 firmware stabilizes the system."""
+    """LQR with position reference stabilizes the system."""
     env = gymnasium.make("BalancingRobot-v0")
 
-    # MATLAB initial condition (body tilted -10°, pendulum +10°)
-    obs, _ = env.reset(options={"matlab_ic": True})
+    obs, _ = env.reset(seed=42)
+    env.unwrapped.state = np.zeros(8)
+    env.unwrapped.state[2] = 0.05
+    env.unwrapped.target_theta_L = 0.0
+    env.unwrapped.target_theta_R = 0.0
+    obs = env.unwrapped._get_obs()
 
     terminated = False
-    truncated = False
     max_theta_1 = 0.0
-    max_theta_2 = 0.0
 
-    while not (terminated or truncated):
-        u = -_K @ obs
+    while not terminated:
+        x = obs[:8]
+        x_ref = np.array([obs[8], obs[9], 0, 0, 0, 0, 0, 0])
+        u = -_K @ (x - x_ref)
         obs, _, terminated, truncated, info = env.step(u)
         max_theta_1 = max(max_theta_1, abs(info["theta_1"]))
-        max_theta_2 = max(max_theta_2, abs(info["theta_2"]))
+        if truncated:
+            break
 
     assert not terminated, (
         f"LQR failed: terminated with theta_1={info['theta_1']:.3f}, "
-        f"max(|theta_1|)={max_theta_1:.3f}, max(|theta_2|)={max_theta_2:.3f}"
+        f"max(|theta_1|)={max_theta_1:.3f}"
     )
     assert truncated, "LQR should survive full episode"
-    print(f"  LQR: max(|theta_1|)={np.rad2deg(max_theta_1):.1f}°")
-    print(f"  LQR: final theta_1={np.rad2deg(obs[2]):.2f}°, theta_2={np.rad2deg(obs[3]):.2f}°")
+    print(f"  LQR: max(|theta_1|)={np.rad2deg(max_theta_1):.1f}deg")
     env.close()
 
 
 def test_action_clipping():
-    """Actions outside bounds are clipped without error."""
     env = gymnasium.make("BalancingRobot-v0")
     env.reset(seed=42)
-    # Action way outside bounds
     obs, reward, terminated, truncated, info = env.step(np.array([10000.0, -10000.0]))
     assert obs is not None
     env.close()

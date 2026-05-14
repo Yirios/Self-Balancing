@@ -1,63 +1,78 @@
-"""Collect LQR demonstrations and pre-train a policy via behavior cloning."""
+"""Pre-train a policy via behavior cloning — sim demonstrations + real data fine-tune."""
+import csv
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from balancing_robot.env import BalancingRobotEnv
-from balancing_robot.dynamics import get_lqr_gains, R
+from balancing_robot.dynamics import get_lqr_gains
 
 K = get_lqr_gains()
-DEVICE = "cuda"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# --- Collect demonstrations using LQR + OU noise ---
+STATE_NAMES = [
+    "theta_L", "theta_R", "theta_1", "theta_2",
+    "theta_L_dot", "theta_R_dot", "theta_dot_1", "theta_dot_2",
+]
+REAL_FILES = [
+    "realcar/balance_steady_1.csv", "realcar/balance_steady_2.csv",
+    "realcar/balance_disturb_1.csv", "realcar/balance_disturb_2.csv",
+    "realcar/balance_line.csv", "realcar/balance_turn.csv",
+]
 
 
-def collect_demo(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
-    """Run LQR with OU noise, collect (obs, action) pairs.  LQR tracks velocity commands."""
-    states, actions = [], []
-    env = BalancingRobotEnv()
+def load_real_data():
+    """Load (obs, action) from real car LQR data.  obs = [8 states, target_θ_L/R]."""
+    obs_list, act_list = [], []
+    for fn in REAL_FILES:
+        with open(fn) as f:
+            rows = list(csv.DictReader(f))
+        for r in rows:
+            state = np.array([float(r[n]) for n in STATE_NAMES], dtype=np.float32)
+            obs_list.append(np.concatenate([
+                state, [float(r["Target_theta_L"]), float(r["Target_theta_R"])]
+            ]))
+            act_list.append([float(r["u_L"]), float(r["u_R"])])
+    print(f"Real data: {len(obs_list)} samples from {len(REAL_FILES)} files")
+    return np.array(obs_list, dtype=np.float32), np.array(act_list, dtype=np.float32)
+
+
+def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
+    """LQR + OU noise in simulation — covers recovery from perturbations."""
+    obs_list, act_list = [], []
+    env = BalancingRobotEnv(inject_noise=False, domain_rand_scale=0.0)
 
     for ep in range(n_episodes):
         obs, _ = env.reset()
         done = False
-
         ou = np.zeros(2)
 
         while not done:
-            # LQR with velocity ref: u = -K @ (x - x_ref)
             x = obs[:8]
-            v_cmd, omega_cmd = obs[8], obs[9]
-            v_left = v_cmd - omega_cmd * env.WHEEL_BASE / 2.0
-            v_right = v_cmd + omega_cmd * env.WHEEL_BASE / 2.0
-            target_L_dot = v_left / R
-            target_R_dot = v_right / R
-            x_ref = np.array([0, 0, 0, 0, target_L_dot, target_R_dot, 0, 0])
+            x_ref = np.array([obs[8], obs[9], 0, 0, 0, 0, 0, 0])
             u_lqr = -K @ (x - x_ref)
 
-            ou += -0.3 * ou * 0.005 + 0.1 * np.random.randn(2) * np.sqrt(0.005)
+            ou += -0.3 * ou * 0.01 + 0.1 * np.random.randn(2) * np.sqrt(0.01)
             noise_scale = 20.0 * max(0.0, 1.0 - ep / n_episodes)
             u = np.clip(u_lqr + ou * noise_scale, -5000, 5000)
 
-            states.append(obs.copy())
-            actions.append(u.copy())
+            obs_list.append(obs.copy())
+            act_list.append(u.copy())
 
             obs, _, terminated, truncated, _ = env.step(u)
             done = terminated or truncated
 
         if (ep + 1) % 50 == 0:
-            print(f"  Collected {ep + 1}/{n_episodes} episodes")
+            print(f"  {ep + 1}/{n_episodes} episodes")
 
     env.close()
-    print(f"  Total samples: {len(states)}")
-    return np.array(states, dtype=np.float32), np.array(actions, dtype=np.float32)
-
-
-# --- Behavior Cloning model (matches PPO net_arch=[64, 64]) ---
+    print(f"Sim demos: {len(obs_list)} samples")
+    return np.array(obs_list, dtype=np.float32), np.array(act_list, dtype=np.float32)
 
 
 class BCModel(nn.Module):
-    """MLP that maps obs (10,) to action (2,), matching PPO's actor architecture."""
+    """MLP 10→32→32→2."""
 
     def __init__(self):
         super().__init__()
@@ -71,59 +86,46 @@ class BCModel(nn.Module):
         return self.action_net(x)
 
 
-def train_bc(states: np.ndarray, actions: np.ndarray, epochs: int = 50) -> BCModel:
-    """Train behavior cloning model to predict actions from states."""
-    model = BCModel().to(DEVICE)
-
-    X = torch.from_numpy(states).to(DEVICE)
-    Y = torch.from_numpy(actions).to(DEVICE)
-    dataset = TensorDataset(X, Y)
-    loader = DataLoader(dataset, batch_size=256, shuffle=True)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+def train_bc(model, X, Y, epochs, lr=1e-3, label=""):
+    loader = DataLoader(TensorDataset(
+        torch.from_numpy(X).to(DEVICE), torch.from_numpy(Y).to(DEVICE)
+    ), batch_size=256, shuffle=True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
     for epoch in range(epochs):
-        total_loss = 0.0
-        for batch_states, batch_actions in loader:
-            pred = model(batch_states)
-            loss = loss_fn(pred, batch_actions)
+        total = 0.0
+        for bx, by in loader:
+            pred = model(bx)
+            loss = loss_fn(pred, by)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            total_loss += loss.item() * len(batch_states)
-
+            total += loss.item() * len(bx)
         if (epoch + 1) % 10 == 0:
-            mean_mae = (pred - batch_actions).abs().mean().item()
-            print(f"  Epoch {epoch + 1}/{epochs}: loss={total_loss / len(states):.4f}, mae={mean_mae:.2f}")
+            print(f"  {label} epoch {epoch + 1}/{epochs}: loss={total / len(X):.1f}")
 
-    return model
-
-
-# --- Load BC weights into PPO ---
+    with torch.no_grad():
+        mae = (model(torch.from_numpy(X).to(DEVICE)) - torch.from_numpy(Y).to(DEVICE)).abs().mean().item()
+    print(f"  {label} final MAE: {mae:.2f}")
 
 
 def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
-    """Copy BC model weights into PPO's policy (policy_net[0,2], action_net)."""
-    policy = ppo_model.policy
-    ppo_policy_net = policy.mlp_extractor.policy_net
+    """Copy BC weights into PPO's policy_net and action_net."""
+    ppo_pn = ppo_model.policy.mlp_extractor.policy_net
 
     def _copy(dst, src):
         dst.data.copy_(src.data.to(dst.device))
 
-    _copy(ppo_policy_net[0].weight, bc_model.features[0].weight)
-    _copy(ppo_policy_net[0].bias, bc_model.features[0].bias)
-    _copy(ppo_policy_net[2].weight, bc_model.policy_net[0].weight)
-    _copy(ppo_policy_net[2].bias, bc_model.policy_net[0].bias)
-    _copy(policy.action_net.weight, bc_model.action_net.weight)
-    _copy(policy.action_net.bias, bc_model.action_net.bias)
-
-
-# --- Evaluate BC model ---
+    _copy(ppo_pn[0].weight, bc_model.features[0].weight)
+    _copy(ppo_pn[0].bias, bc_model.features[0].bias)
+    _copy(ppo_pn[2].weight, bc_model.policy_net[0].weight)
+    _copy(ppo_pn[2].bias, bc_model.policy_net[0].bias)
+    _copy(ppo_model.policy.action_net.weight, bc_model.action_net.weight)
+    _copy(ppo_model.policy.action_net.bias, bc_model.action_net.bias)
 
 
 def eval_bc(bc_model: BCModel, n_episodes: int = 20):
-    """Test BC model without exploration noise."""
     env = BalancingRobotEnv()
     lengths = []
     for _ in range(n_episodes):
@@ -134,26 +136,31 @@ def eval_bc(bc_model: BCModel, n_episodes: int = 20):
             with torch.no_grad():
                 inp = torch.from_numpy(obs.astype(np.float32)).to(DEVICE)
                 u = bc_model(inp).cpu().numpy()
-            obs, _, terminated, truncated, _ = env.step(np.clip(u, -500, 500))
+            obs, _, terminated, truncated, _ = env.step(np.clip(u, -5000, 5000))
             done = terminated or truncated
             steps += 1
         lengths.append(steps)
     env.close()
-    print(f"  BC eval: mean episode length = {np.mean(lengths):.0f} / max = {np.max(lengths)}")
+    mean_len = np.mean(lengths)
+    print(f"  BC eval: mean ep_len = {mean_len:.0f} / max = {np.max(lengths)}")
+    return mean_len
 
 
 if __name__ == "__main__":
-    print("Collecting LQR demonstrations...")
-    states, actions = collect_demo(n_episodes=200)
+    print("Phase 1: Simulated LQR+OU demos (learn recovery)")
+    sim_obs, sim_act = collect_sim_demos(200)
 
-    print("\nTraining behavior cloning model...")
-    bc_model = train_bc(states, actions, epochs=50)
+    model = BCModel().to(DEVICE)
+    train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim")
 
-    print("\nEvaluating BC model...")
-    eval_bc(bc_model)
+    print("\nPhase 2: Real car data (fine-tune steady-state behavior)")
+    real_obs, real_act = load_real_data()
+    train_bc(model, real_obs, real_act, epochs=30, lr=2e-4, label="real")
 
-    # Save BC model for later fine-tuning
-    torch.save(bc_model.state_dict(), "bc_model.pt")
+    print("\nEvaluating...")
+    eval_bc(model)
+
+    torch.save(model.state_dict(), "bc_model.pt")
     print("BC model saved as bc_model.pt")
 
     print("\nInitializing PPO with BC weights...")
@@ -168,18 +175,10 @@ if __name__ == "__main__":
     env = VecNormalize(env, norm_obs=False, norm_reward=True)
 
     policy_kwargs = dict(net_arch=[32, 32], activation_fn=torch.nn.ReLU)
-    model = PPO(
-        "MlpPolicy",
-        env,
-        policy_kwargs=policy_kwargs,
-        verbose=0,
-        device="cpu",
-    )
+    ppo = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=0, device="cpu")
 
-    load_bc_into_ppo(bc_model, model)
-
-    # Save pretrained model and normalization stats
-    model.save("ppo_balance_bot_pretrained")
+    load_bc_into_ppo(model, ppo)
+    ppo.save("ppo_balance_bot_pretrained")
     env.save("vec_normalize.pkl")
-    print("Pretrained model saved as ppo_balance_bot_pretrained.zip")
+    print("Saved ppo_balance_bot_pretrained.zip")
     env.close()

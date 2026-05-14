@@ -137,7 +137,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export model to C header")
     parser.add_argument("-m", "--model", default="bc_model.pt",
                         help="Model path (bc_model.pt or best_model_reg/best_model.zip)")
-    parser.add_argument("-o", "--output", default="balance_nn.h",
+    parser.add_argument("-o", "--output", default="WHEELTEC_HAL/MiniBalance/Inc/balance_nn.h",
                         help="Output C header filename")
     args = parser.parse_args()
     export(args.model, args.output)

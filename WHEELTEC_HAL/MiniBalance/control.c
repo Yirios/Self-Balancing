@@ -18,6 +18,7 @@ All rights reserved
 ***********************************************/
 #include "control.h"
 #include "rl_send.h"
+#include "balance_nn.h"   // RL model: nn_predict(input[10], output[2])
 short Accel_Y,Accel_Z,Accel_X,Accel_Angle_x,Accel_Angle_y,Gyro_X,Gyro_Z,Gyro_Y;
 //LQR状态反馈系数
 float K11=81.2695, K12=-10.0616, K13=-5492.4061, K14=18921.7098, K15=100.3633, K16=8.0376, K17=447.3084, K18=2962.7738;
@@ -101,9 +102,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_theta_dot_2 = theta_dot_2;
 			last_theta_2 = theta_2;
 			Normal();		//普通模式
-			//计算输入变量(LQR控制器)
+			//计算输入变量(LQR控制器 / RL控制器)
+			#if 1  // RL controller (set to 0 for LQR fallback)
+			{
+				float nn_input[10] = {
+					theta_L, theta_R, theta_1, theta_2,
+					theta_L_dot, theta_R_dot, theta_dot_1, theta_dot_2,
+					Target_theta_L, Target_theta_R
+				};
+				float nn_output[2];
+				nn_predict(nn_input, nn_output);
+				u_L = nn_output[0];
+				u_R = nn_output[1];
+			}
+			#else
 			u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 			+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
 			u_R=-(K21*(theta_L-Target_theta_L) + K22*(theta_R-Target_theta_R) + K23*(theta_1-Target_theta_1) + K24*theta_2 			+ K25*(theta_L_dot-Target_theta_L_dot) + K26*(theta_R_dot-Target_theta_R_dot) + K27*theta_dot_1 + K28*theta_dot_2);
+			#endif
 			if ( (theta_1<0.7854 && theta_1>-0.7854) )
 			{
 				TargetVal_L = theta_L_dot + u_L*t;											//左轮的目标速度

@@ -87,10 +87,7 @@ def run_and_record(
 ):
     """Run episode, record states and global positions for animation.
 
-    drive = (v_target, omega_target):
-      v_target: forward speed (m/s)
-      omega_target: turn rate (rad/s)
-      Both default to 0 (balance in place).
+    drive = (target_theta_L, target_theta_R):  LQR position targets (rad)
     """
     env = gym.make("BalancingRobot-v0")
 
@@ -116,22 +113,20 @@ def run_and_record(
 
         def policy(obs):
             x = obs[:8]
-            v_cmd, omega_cmd = obs[8], obs[9]
-            v_left = v_cmd - omega_cmd * WHEEL_BASE / 2.0
-            v_right = v_cmd + omega_cmd * WHEEL_BASE / 2.0
-            x_ref = np.array([0, 0, 0, 0, v_left / R, v_right / R, 0, 0])
+            target_L, target_R = obs[8], obs[9]
+            x_ref = np.array([target_L, target_R, 0, 0, 0, 0, 0, 0])
             return -K @ (x - x_ref)
 
-        label = "LQR (original)"
+        label = "LQR"
     else:
         raise ValueError(f"Unknown model: {model_type}")
 
-    v_target, omega_target = drive
-    if v_target != 0 or omega_target != 0:
-        label += f"  drive: v={v_target:.2f} ω={omega_target:.2f}"
+    target_L, target_R = drive  # position targets (rad)
+    if target_L != 0 or target_R != 0:
+        label += f"  targets: L={target_L:.1f} R={target_R:.1f}"
 
     print(f"Recording: {label}")
-    obs, _ = env.reset(seed=42, options={"v_cmd": v_target, "omega_cmd": omega_target})
+    obs, _ = env.reset(seed=42, options={"target_theta_L": target_L, "target_theta_R": target_R})
 
     states, xs, ys, yaws = [], [], [], []
     for _ in range(steps):
@@ -280,38 +275,36 @@ if __name__ == "__main__":
         help="Stochastic policy (PPO only)",
     )
     parser.add_argument(
-        "-n", "--steps", type=int, default=700,
+        "-n", "--steps", type=int, default=3000,
     )
     parser.add_argument(
         "-o", "--output", type=str, default=None,
     )
     parser.add_argument(
-        "--straight", type=float, default=0.0,
-        help="Forward speed in m/s (e.g. 0.2)",
+        "--target-left", type=float, default=0.0,
+        help="Left wheel position target (rad)",
     )
     parser.add_argument(
-        "--turn", type=float, default=0.0,
-        help="Turn rate in rad/s (e.g. 0.5 for gentle curve)",
+        "--target-right", type=float, default=0.0,
+        help="Right wheel position target (rad)",
     )
     parser.add_argument(
         "--slalom", action="store_true",
-        help="Alternate forward+turn for a slalom pattern",
+        help="Straight → turn left → straight → turn right",
     )
     args = parser.parse_args()
 
     output = args.output or f"balance_{args.model}_3d.gif"
 
     if args.slalom:
-        # Record slalom: straight → turn left → straight → turn right
-        from functools import partial
-
         all_states, all_x, all_y, all_yaw = [], [], [], []
+        # Position targets: equal=straight, diff=turn
         segments = [
-            (200, (0.4, 0.0)),     # go straight (fast)
-            (200, (0.15, 1.5)),    # sharp left turn
-            (200, (0.4, 0.0)),     # straight
-            (200, (0.15, -1.5)),   # sharp right turn
-            (200, (0.4, 0.0)),     # straight
+            (200, (40.0, 40.0)),    # straight
+            (200, (-15.0, 15.0)),   # turn left
+            (200, (40.0, 40.0)),    # straight
+            (200, (15.0, -15.0)),   # turn right
+            (200, (40.0, 40.0)),    # straight
         ]
         label_base = {"ppo": "BC-reg PPO", "bc": "BC", "lqr": "LQR"}[args.model]
         label = f"{label_base} (slalom)"
@@ -329,6 +322,6 @@ if __name__ == "__main__":
             args.model,
             deterministic=not args.stochastic,
             steps=args.steps,
-            drive=(args.straight, args.turn),
+            drive=(args.target_left, args.target_right),
         )
         make_animation_3d(states, xs, ys, yaws, label, output)
