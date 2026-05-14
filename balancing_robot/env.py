@@ -35,6 +35,7 @@ class BalancingRobotEnv(gymnasium.Env):
         bc_beta: float = 0.0,
         inject_noise: bool = False,
         domain_rand_scale: float = 0.0,
+        h_scale: float = 1.0,
     ):
         super().__init__()
         self.observation_space = spaces.Box(
@@ -49,9 +50,12 @@ class BalancingRobotEnv(gymnasium.Env):
         self.bc_beta = bc_beta
         self.inject_noise = inject_noise
         self.domain_rand_scale = domain_rand_scale
+        self.h_scale = h_scale
 
         self.G = _G
-        self.H = _H
+        self.H = _H.copy()
+        self.H[4, 0] *= h_scale
+        self.H[5, 1] *= h_scale
         self.K = _K
         self.WHEEL_BASE = 0.16
 
@@ -89,9 +93,13 @@ class BalancingRobotEnv(gymnasium.Env):
             _, _, self.G, self.H = compute_state_space_with_params(
                 m1=m1, m2=m2, r=radius, l1=l1, l2=l2, ts=TS
             )
+            self.H[4, 0] *= self.h_scale
+            self.H[5, 1] *= self.h_scale
         else:
             self.G = _G
-            self.H = _H
+            self.H = _H.copy()
+            self.H[4, 0] *= self.h_scale
+            self.H[5, 1] *= self.h_scale
             self.WHEEL_BASE = 0.16
 
         if options is not None and "target_theta_L" in options:
