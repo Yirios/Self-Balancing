@@ -61,8 +61,8 @@ def _robot_vertices(x, y, yaw, theta_1, theta_2):
     body_top_rz = R + L_1 * np.cos(theta_1)
     body_top = transform(body_top_rx, 0, body_top_rz)
 
-    # Pendulum: from body top, tilted by theta_1+theta_2
-    pend_angle = theta_1 + theta_2
+    # Pendulum: absolute angle from vertical (theta_2 is absolute, not relative)
+    pend_angle = theta_2
     pend_top_rx = body_top_rx + L_2 * np.sin(pend_angle)
     pend_top_rz = body_top_rz + L_2 * np.cos(pend_angle)
     pend_top = transform(pend_top_rx, 0, pend_top_rz)
@@ -129,9 +129,16 @@ def run_and_record(
 
     print(f"Recording: {label}")
     obs, _ = env.reset(seed=42, options={"target_theta_L": target_L, "target_theta_R": target_R})
+    # Start from equilibrium position (no initial drift)
+    env.unwrapped.state[0] = target_L
+    env.unwrapped.state[1] = target_R
+    obs = env.unwrapped._get_obs()
 
     states, xs, ys, yaws = [], [], [], []
-    for _ in range(steps):
+    for i in range(steps):
+        # Pendulum impulses at 1s, 2.5s, 4s
+        if i in (100, 250, 400):
+            env.unwrapped.state[7] += 0.8  # theta_dot_2 impulse (matches real car th2 range)
         u = policy(obs)
         obs, _, terminated, truncated, _ = env.step(u)
         states.append(obs.copy())
@@ -277,7 +284,7 @@ if __name__ == "__main__":
         help="Stochastic policy (PPO only)",
     )
     parser.add_argument(
-        "-n", "--steps", type=int, default=3000,
+        "-n", "--steps", type=int, default=600,
     )
     parser.add_argument(
         "-o", "--output", type=str, default=None,

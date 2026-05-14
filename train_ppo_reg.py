@@ -10,17 +10,17 @@ from pretrain_bc import BCModel, load_bc_into_ppo
 from kl_ppo import KLRegularizedPPO, BCReference
 
 BC_COEF = 0.01
-H_SCALE = 0.35  # effective wheel acceleration gain vs original H[4,0]=0.01
 
-def make_env(inject_noise=False, domain_rand_scale=0.0):
+def make_env(inject_noise=False, domain_rand_scale=0.0, pendulum_disturb_std=0.0):
     return Monitor(gym.make("BalancingRobot-v0",
         inject_noise=inject_noise, domain_rand_scale=domain_rand_scale,
-        h_scale=H_SCALE))
+        pendulum_disturb_std=pendulum_disturb_std))
 
 
 if __name__ == "__main__":
-    # Train with noise + domain randomization for Sim-to-Real robustness
-    env = DummyVecEnv([lambda: make_env(inject_noise=True, domain_rand_scale=0.05) for _ in range(4)])
+    # Train with noise + domain randomization + pendulum disturbance
+    env = DummyVecEnv([lambda: make_env(inject_noise=True, domain_rand_scale=0.05,
+                                        pendulum_disturb_std=0.8) for _ in range(4)])
     env = VecNormalize(env, norm_obs=False, norm_reward=True)
 
     # Eval on clean environment

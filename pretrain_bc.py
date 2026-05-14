@@ -44,7 +44,8 @@ def load_real_data():
 def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
     """LQR + OU noise in simulation."""
     obs_list, act_list = [], []
-    env = BalancingRobotEnv(inject_noise=False, domain_rand_scale=0.0, h_scale=0.35)
+    env = BalancingRobotEnv(inject_noise=False, domain_rand_scale=0.0,
+                            pendulum_disturb_std=0.8)
 
     for ep in range(n_episodes):
         obs, _ = env.reset()
@@ -129,7 +130,7 @@ def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
 
 
 def eval_bc(bc_model: BCModel, n_episodes: int = 20):
-    env = BalancingRobotEnv(h_scale=0.35)
+    env = BalancingRobotEnv()
     lengths = []
     for _ in range(n_episodes):
         obs, _ = env.reset()

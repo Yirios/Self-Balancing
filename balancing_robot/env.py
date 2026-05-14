@@ -36,6 +36,7 @@ class BalancingRobotEnv(gymnasium.Env):
         inject_noise: bool = False,
         domain_rand_scale: float = 0.0,
         h_scale: float = 1.0,
+        pendulum_disturb_std: float = 0.0,
     ):
         super().__init__()
         self.observation_space = spaces.Box(
@@ -51,6 +52,7 @@ class BalancingRobotEnv(gymnasium.Env):
         self.inject_noise = inject_noise
         self.domain_rand_scale = domain_rand_scale
         self.h_scale = h_scale
+        self.pendulum_disturb_std = pendulum_disturb_std
 
         self.G = _G
         self.H = _H.copy()
@@ -151,6 +153,12 @@ class BalancingRobotEnv(gymnasium.Env):
         if self.inject_noise:
             self.state += self.np_random.normal(0, NOISE_STD).astype(np.float64)
 
+        # Low-frequency pendulum disturbance (~5s period, random impulse to theta_dot_2)
+        if self.pendulum_disturb_std > 0 and self.np_random.random() < 0.002:
+            self.state[7] += self.np_random.uniform(
+                -self.pendulum_disturb_std, self.pendulum_disturb_std
+            )
+
         x = self.state
 
         state_cost = float(x @ np.diag(self.Q_diag) @ x)
@@ -218,9 +226,8 @@ class BalancingRobotEnv(gymnasium.Env):
         bty = cy - int(body_len * np.cos(theta_1))
         pygame.draw.line(self.window, (200, 50, 50), (cx, cy), (btx, bty), 6)
         pend_len = int(L_2 * scale)
-        pa = theta_1 + theta_2_val
-        ptx = btx + int(pend_len * np.sin(pa))
-        pty = bty - int(pend_len * np.cos(pa))
+        ptx = cx + int(L_1 * scale * np.sin(theta_1) + pend_len * np.sin(theta_2_val))
+        pty = cy - int(L_1 * scale * np.cos(theta_1) + pend_len * np.cos(theta_2_val))
         pygame.draw.line(self.window, (50, 50, 200), (btx, bty), (ptx, pty), 4)
         pygame.draw.circle(self.window, (200, 50, 50), (btx, bty), 8)
         pygame.draw.circle(self.window, (50, 50, 200), (ptx, pty), 6)
