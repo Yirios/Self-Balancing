@@ -112,9 +112,11 @@ def run_and_record(
         K = get_lqr_gains()
 
         def policy(obs):
-            x = obs[:8]
-            target_L, target_R = obs[8], obs[9]
-            x_ref = np.array([target_L, target_R, 0, 0, 0, 0, 0, 0])
+            # obs[0:2] are already (thL-targetL, thR-targetR)
+            pos_err = obs[0:2]
+            x = np.array([pos_err[0], pos_err[1], obs[2], obs[3],
+                          obs[4], obs[5], obs[6], obs[7]])
+            x_ref = np.zeros(8)
             return -K @ (x - x_ref)
 
         label = "LQR"

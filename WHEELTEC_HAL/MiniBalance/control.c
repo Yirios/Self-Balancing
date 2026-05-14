@@ -105,10 +105,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			//计算输入变量(LQR控制器 / RL控制器)
 			#if 1  // RL controller (set to 0 for LQR fallback)
 			{
-				float nn_input[10] = {
-					theta_L, theta_R, theta_1, theta_2,
+				float nn_input[8] = {
+					theta_L - Target_theta_L, theta_R - Target_theta_R,
+					theta_1, theta_2,
 					theta_L_dot, theta_R_dot, theta_dot_1, theta_dot_2,
-					Target_theta_L, Target_theta_R
 				};
 				float nn_output[2];
 				nn_predict(nn_input, nn_output);
