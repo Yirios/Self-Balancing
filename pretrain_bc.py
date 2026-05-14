@@ -92,27 +92,41 @@ class BCModel(nn.Module):
         return self.action_net(x)
 
 
-def train_bc(model, X, Y, epochs, lr=1e-3, label=""):
+def train_bc(model, X, Y, epochs, lr=1e-3, label="", smooth_coef=0.0):
     loader = DataLoader(TensorDataset(
         torch.from_numpy(X).to(DEVICE), torch.from_numpy(Y).to(DEVICE)
     ), batch_size=256, shuffle=True)
+    # Consecutive pairs for temporal smoothness (unshuffled subset)
+    n_smooth = min(20000, len(X) - 1)
+    X_seq = torch.from_numpy(X[::len(X)//n_smooth][:n_smooth]).to(DEVICE)
+    X_seq_next = torch.from_numpy(X[1::len(X)//n_smooth][:n_smooth]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
     for epoch in range(epochs):
-        total = 0.0
+        total_mse = 0.0
+        total_smooth = 0.0
         for bx, by in loader:
             pred = model(bx)
-            loss = loss_fn(pred, by)
+            mse_loss = loss_fn(pred, by)
+            loss = mse_loss
+            if smooth_coef > 0:
+                # penalize large action changes between consecutive states
+                smooth_loss = loss_fn(model(X_seq), model(X_seq_next))
+                loss = loss + smooth_coef * smooth_loss
+                total_smooth += smooth_loss.item() * len(bx)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            total += loss.item() * len(bx)
+            total_mse += mse_loss.item() * len(bx)
         if (epoch + 1) % 10 == 0:
             with torch.no_grad():
                 mae = (model(torch.from_numpy(X).to(DEVICE)) -
                        torch.from_numpy(Y).to(DEVICE)).abs().mean().item()
-            print(f"  {label} epoch {epoch + 1}/{epochs}: loss={total/len(X):.1f}  mae={mae:.2f}")
+            s = f"  mse={total_mse/len(X):.1f}"
+            if smooth_coef > 0:
+                s += f"  smooth={total_smooth/len(X):.1f}"
+            print(f"  {label} epoch {epoch + 1}/{epochs}: {s}  mae={mae:.2f}")
 
 
 def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
@@ -155,11 +169,11 @@ if __name__ == "__main__":
     sim_obs, sim_act = collect_sim_demos(200)
 
     model = BCModel().to(DEVICE)
-    train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim")
+    train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim", smooth_coef=0.1)
 
     print("\nPhase 2: Real car data (light fine-tune)")
     real_obs, real_act = load_real_data()
-    train_bc(model, real_obs, real_act, epochs=5, lr=1e-5, label="real")
+    train_bc(model, real_obs, real_act, epochs=5, lr=1e-5, label="real", smooth_coef=0.0)
 
     print("\nEvaluating...")
     eval_bc(model)
