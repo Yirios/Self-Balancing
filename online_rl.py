@@ -183,13 +183,13 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
         # Store transition
         reward = compute_reward(data, alpha)
         terminated = bool(abs(data["theta_1"]) > 0.7854 or
-                          abs(data["theta_2"]) > 0.7854)
+                          abs(data["theta_2"]) > 0.7854) 
 
         if last_obs is not None:
             buffer.append((last_obs, last_action, reward, obs, terminated))
 
         last_obs = obs
-        last_action = u_total  # store the ACTUAL action sent
+        last_action = delta  # store the residual delta sent
 
         if terminated:
             print(f"  Episode terminated at step {step} "
