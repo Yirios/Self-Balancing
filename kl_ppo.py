@@ -12,17 +12,13 @@ class BCReference(nn.Module):
 
     def __init__(self, bc_model):
         super().__init__()
-        self.features = bc_model.features
-        self.policy_net = bc_model.policy_net
-        self.action_net = bc_model.action_net
-        for p in self.parameters():
+        self.model = bc_model
+        for p in self.model.parameters():
             p.requires_grad = False
-        self.eval()
+        self.model.eval()
 
     def forward(self, obs):
-        x = self.features(obs.float())
-        x = self.policy_net(x)
-        return self.action_net(x)
+        return self.model(obs.float())
 
 
 class KLRegularizedPPO(PPO):
