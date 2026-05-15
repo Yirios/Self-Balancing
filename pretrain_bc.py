@@ -44,7 +44,7 @@ def load_real_data():
 def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
     """LQR + OU noise in simulation."""
     obs_list, act_list = [], []
-    env = BalancingRobotEnv(inject_noise=False, domain_rand_scale=0.0,
+    env = BalancingRobotEnv(inject_noise=True, domain_rand_scale=0.0,
                             pendulum_disturb_std=0.8)
 
     for ep in range(n_episodes):
@@ -78,18 +78,17 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
 
 
 class BCModel(nn.Module):
-    """MLP 8→32→32→2."""
+    """MLP 8→32→2 (single hidden layer)."""
 
     def __init__(self):
         super().__init__()
-        self.features = nn.Sequential(nn.Linear(8, 32), nn.ReLU())
-        self.policy_net = nn.Sequential(nn.Linear(32, 32), nn.ReLU())
-        self.action_net = nn.Linear(32, 2)
+        self.net = nn.Sequential(
+            nn.Linear(8, 32), nn.ReLU(),
+            nn.Linear(32, 2),
+        )
 
     def forward(self, x):
-        x = self.features(x)
-        x = self.policy_net(x)
-        return self.action_net(x)
+        return self.net(x)
 
 
 def train_bc(model, X, Y, epochs, lr=1e-3, label="", smooth_coef=0.0, val_split=0.2):
@@ -162,12 +161,15 @@ def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
     def _copy(dst, src):
         dst.data.copy_(src.data.to(dst.device))
 
-    _copy(ppo_pn[0].weight, bc_model.features[0].weight)
-    _copy(ppo_pn[0].bias, bc_model.features[0].bias)
-    _copy(ppo_pn[2].weight, bc_model.policy_net[0].weight)
-    _copy(ppo_pn[2].bias, bc_model.policy_net[0].bias)
-    _copy(ppo_model.policy.action_net.weight, bc_model.action_net.weight)
-    _copy(ppo_model.policy.action_net.bias, bc_model.action_net.bias)
+    # BC: net[0]=Linear(8,32), net[2]=Linear(32,2)
+    # PPO: policy_net[0]=Linear(8,32), policy_net[2]=Linear(32,32), action_net=Linear(32,2)
+    _copy(ppo_pn[0].weight, bc_model.net[0].weight)
+    _copy(ppo_pn[0].bias, bc_model.net[0].bias)
+    # PPO second layer: identity initialization (pass through)
+    nn.init.eye_(ppo_pn[2].weight)
+    nn.init.zeros_(ppo_pn[2].bias)
+    _copy(ppo_model.policy.action_net.weight, bc_model.net[2].weight)
+    _copy(ppo_model.policy.action_net.bias, bc_model.net[2].bias)
 
 
 def eval_bc(bc_model: BCModel, n_episodes: int = 20):
