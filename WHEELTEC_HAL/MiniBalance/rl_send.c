@@ -70,7 +70,7 @@ void RL_Recv_ExtCtrl(void) {
             if (rx_idx == EXT_CTRL_SIZE) {
                 float *f = (float *)(rx_buf + 1);
                 ext_u_L = f[0]; ext_u_R = f[1];
-                ext_u_fresh = 1; ext_timeout = 0;
+                ext_u_fresh = 1; ext_timeout = 0; rx_idx = 0;
                 rx_idx = 0;
             }
         } else {

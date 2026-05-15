@@ -104,8 +104,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			Normal();		//普通模式
 			//计算输入变量(LQR控制器 / RL控制器)
 			if (ext_u_fresh) {
-				// External control from PC (online RL)
+				// External control from PC (online RL) — single-use
 				u_L = ext_u_L; u_R = ext_u_R;
+				ext_u_fresh = 0;
 			} else {
 				// Internal RL controller
 				float nn_input[8] = {

@@ -44,7 +44,7 @@ LR = 3e-4
 GAMMA = 0.99
 UPDATE_INTERVAL = 1.0  # seconds between PPO-style updates
 BUF_CAPACITY = 2000     # ~20s of data
-ALPHA_START = 0.01      # residual scaling starts small
+ALPHA_START = 0     # residual scaling starts small
 
 print(f"Device: {DEVICE}")
 
@@ -154,6 +154,15 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
 
         data = pkts[-1]  # latest packet
 
+        # Debug: first 10 steps, print received state and computed action
+        if step < 10:
+            th1 = np.rad2deg(data["theta_1"])
+            thL = data["theta_L"]; thR = data["theta_R"]
+            tL = data["Target_theta_L"]; tR = data["Target_theta_R"]
+            uL_stm = data["u_L"]; uR_stm = data["u_R"]
+            print(f"  step {step}: th1={th1:+.2f}deg thL={thL:.1f} tL={tL:.1f} "
+                  f"STM32_u=({uL_stm:.0f},{uR_stm:.0f})")
+
         # Build 8D obs
         obs = np.array([
             data["theta_L"] - data["Target_theta_L"],
@@ -182,6 +191,9 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
 
         # Send to robot
         io.send_action(u_total[0], u_total[1])
+        if step < 10:
+            print(f"         PC sends: u=({u_total[0]:.0f},{u_total[1]:.0f}) "
+                  f"LQR=({u_lqr[0]:.0f},{u_lqr[1]:.0f}) res=({alpha*u_res[0]:.1f},{alpha*u_res[1]:.1f})")
 
         # Store transition
         reward = compute_reward(data, alpha)
