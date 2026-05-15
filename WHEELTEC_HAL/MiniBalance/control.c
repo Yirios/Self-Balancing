@@ -103,8 +103,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_theta_2 = theta_2;
 			Normal();		//普通模式
 			//计算输入变量(LQR控制器 / RL控制器)
-			#if 1  // RL controller (set to 0 for LQR fallback)
-			{
+			if (ext_u_fresh) {
+				// External control from PC (online RL)
+				u_L = ext_u_L; u_R = ext_u_R;
+			} else {
+				// Internal RL controller
 				float nn_input[8] = {
 					theta_L - Target_theta_L, theta_R - Target_theta_R,
 					theta_1, theta_2,
@@ -115,10 +118,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 				u_L = nn_output[0];
 				u_R = nn_output[1];
 			}
-			#else
-			u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 			+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
+			// LQR fallback (unused, kept for reference)
+			// u_L=-(K11*(theta_L-Target_theta_L) + K12*(theta_R-Target_theta_R) + K13*(theta_1-Target_theta_1) + K14*theta_2 			+ K15*(theta_L_dot-Target_theta_L_dot) + K16*(theta_R_dot-Target_theta_R_dot) + K17*theta_dot_1 + K18*theta_dot_2);
 			u_R=-(K21*(theta_L-Target_theta_L) + K22*(theta_R-Target_theta_R) + K23*(theta_1-Target_theta_1) + K24*theta_2 			+ K25*(theta_L_dot-Target_theta_L_dot) + K26*(theta_R_dot-Target_theta_R_dot) + K27*theta_dot_1 + K28*theta_dot_2);
-			#endif
 			if ( (theta_1<0.7854 && theta_1>-0.7854) )
 			{
 				TargetVal_L = theta_L_dot + u_L*t;											//左轮的目标速度
@@ -132,6 +134,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 				PWM_L = 0;
 				PWM_R = 0;
 			}
+			RL_Recv_ExtCtrl();                                      // check for PC external u commands
 			RL_Send_Data();                                         // 100Hz, theta_dot_1 still valid here
 			theta_dot_1 = 0;
 		}
