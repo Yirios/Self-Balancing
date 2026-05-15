@@ -78,14 +78,11 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
 
 
 class BCModel(nn.Module):
-    """MLP 8→32→2 (single hidden layer)."""
+    """Linear 8→2 — directly learns LQR K matrix."""
 
     def __init__(self):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(8, 32), nn.ReLU(),
-            nn.Linear(32, 2),
-        )
+        self.net = nn.Linear(8, 2)
 
     def forward(self, x):
         return self.net(x)
@@ -161,15 +158,23 @@ def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
     def _copy(dst, src):
         dst.data.copy_(src.data.to(dst.device))
 
-    # BC: net[0]=Linear(8,32), net[2]=Linear(32,2)
+    # BC: net = Linear(8,2)
     # PPO: policy_net[0]=Linear(8,32), policy_net[2]=Linear(32,32), action_net=Linear(32,2)
-    _copy(ppo_pn[0].weight, bc_model.net[0].weight)
-    _copy(ppo_pn[0].bias, bc_model.net[0].bias)
-    # PPO second layer: identity initialization (pass through)
+    W = bc_model.net.weight.data  # 2×8
+    B = bc_model.net.bias.data    # 2
+    # Embed BC weights into PPO's larger architecture
+    # policy_net[0]: expand 2→32 output dims, fill with BC weights + zeros
+    ppo_pn[0].weight.data.zero_()
+    ppo_pn[0].weight.data[:2] = W
+    ppo_pn[0].bias.data.zero_()
+    ppo_pn[0].bias.data[:2] = B
+    # policy_net[2]: identity for first 2 dims, zero others
     nn.init.eye_(ppo_pn[2].weight)
     nn.init.zeros_(ppo_pn[2].bias)
-    _copy(ppo_model.policy.action_net.weight, bc_model.net[2].weight)
-    _copy(ppo_model.policy.action_net.bias, bc_model.net[2].bias)
+    # action_net: copy BC weights into first 2 columns
+    ppo_model.policy.action_net.weight.data.zero_()
+    ppo_model.policy.action_net.weight.data[:, :2] = torch.eye(2)
+    ppo_model.policy.action_net.bias.data.zero_()
 
 
 def eval_bc(bc_model: BCModel, n_episodes: int = 20):
@@ -197,35 +202,25 @@ if __name__ == "__main__":
     print("Phase 1: Simulated LQR+OU demos")
     sim_obs, sim_act = collect_sim_demos(200)
 
-    model = BCModel().to(DEVICE)
-    train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim", smooth_coef=1.0)
+    # OLS: direct linear fit (matches LQR exactly since LQR is linear)
+    X = np.concatenate([sim_obs, sim_act], axis=0) if False else sim_obs
+    W = np.linalg.lstsq(sim_obs, sim_act, rcond=None)[0]  # 8×2
+    print(f"  OLS fitted: W max|abs|={np.max(np.abs(W)):.0f}")
 
-    print("\nPhase 2: Real car data (light fine-tune)")
+    model = BCModel().to(DEVICE)
+    with torch.no_grad():
+        model.net.weight.copy_(torch.from_numpy(W.T.astype(np.float32)))
+        model.net.bias.zero_()
+
+    print("\nPhase 2: Real car data (light fine-tune via weighted OLS)")
     real_obs, real_act = load_real_data()
-    train_bc(model, real_obs, real_act, epochs=5, lr=1e-5, label="real", smooth_coef=0.0)
+    X_mix = np.concatenate([sim_obs, real_obs])
+    Y_mix = np.concatenate([sim_act, real_act])
+    W_mix = np.linalg.lstsq(X_mix, Y_mix, rcond=None)[0]
+    with torch.no_grad():
+        model.net.weight.copy_(torch.from_numpy(W_mix.T.astype(np.float32)))
 
     print("\nEvaluating...")
     eval_bc(model)
-
     torch.save(model.state_dict(), "bc_model.pt")
     print("BC model saved as bc_model.pt")
-
-    print("\nInitializing PPO with BC weights...")
-    from stable_baselines3 import PPO
-    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-    from stable_baselines3.common.monitor import Monitor
-
-    def make_env():
-        return Monitor(BalancingRobotEnv())
-
-    env = DummyVecEnv([make_env for _ in range(4)])
-    env = VecNormalize(env, norm_obs=False, norm_reward=True)
-
-    policy_kwargs = dict(net_arch=[32, 32], activation_fn=torch.nn.ReLU)
-    ppo = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=0, device="cpu")
-
-    load_bc_into_ppo(model, ppo)
-    ppo.save("ppo_balance_bot_pretrained")
-    env.save("vec_normalize.pkl")
-    print("Saved ppo_balance_bot_pretrained.zip")
-    env.close()
