@@ -48,10 +48,6 @@ ALPHA_START = 0     # residual scaling starts small
 
 print(f"Device: {DEVICE}")
 
-from balancing_robot.dynamics import get_lqr_gains
-K = get_lqr_gains()
-
-
 # ─── Residual MLP ───
 
 class ResidualMLP(nn.Module):
@@ -172,28 +168,17 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
             data["theta_dot_1"], data["theta_dot_2"],
         ], dtype=np.float32)
 
-        # LQR baseline
-        x = np.array([data["theta_L"], data["theta_R"],
-                      data["theta_1"], data["theta_2"],
-                      data["theta_L_dot"], data["theta_R_dot"],
-                      data["theta_dot_1"], data["theta_dot_2"]])
-        x_ref = np.array([data["Target_theta_L"], data["Target_theta_R"],
-                          0, 0, 0, 0, 0, 0])
-        u_lqr = -K @ (x - x_ref)
-
         # Residual MLP
         with torch.no_grad():
             inp = torch.from_numpy(obs).float().to(DEVICE)
             u_res = model(inp).cpu().numpy()
 
-        # Total action
-        u_total = np.clip(u_lqr + alpha * u_res, -5000, 5000)
-
-        # Send to robot
-        io.send_action(u_total[0], u_total[1])
+        # PC sends only the residual delta (STM32 computes LQR internally)
+        delta = alpha * u_res
+        io.send_action(delta[0], delta[1])
         if step < 10:
-            print(f"         PC sends: u=({u_total[0]:.0f},{u_total[1]:.0f}) "
-                  f"LQR=({u_lqr[0]:.0f},{u_lqr[1]:.0f}) res=({alpha*u_res[0]:.1f},{alpha*u_res[1]:.1f})")
+            stm_u = (data["u_L"], data["u_R"])
+            print(f"         PC delta=({delta[0]:.1f},{delta[1]:.1f})  STM32_u=({stm_u[0]:.0f},{stm_u[1]:.0f})")
 
         # Store transition
         reward = compute_reward(data, alpha)
@@ -284,14 +269,16 @@ if __name__ == "__main__":
                     batch_rew = torch.tensor([replay[i][2] for i in idx],
                                              dtype=torch.float32, device=DEVICE)
 
-                    # Simple advantage-weighted regression (AWAC-style)
-                    # Move actions toward LQR baseline (where reward is highest)
-                    baseline = batch_obs @ torch.from_numpy(
-                        (-K).T.astype(np.float32)).to(DEVICE)
-                    # Weight: higher reward = more weight
+                    # Residual should be small; only non-zero if it improves reward
+                    # Weight: higher reward = more influence
                     weights = torch.softmax(batch_rew / 1e4, dim=0)
+                    # Regress toward the stored residual action
+                    pred = model(batch_obs)
                     weighted_loss = (weights.unsqueeze(-1) *
-                                     (model(batch_obs) - (batch_act - baseline)) ** 2).mean()
+                                     (pred - batch_act) ** 2).mean()
+                    # L2 penalty: encourage residual to stay small
+                    l2_penalty = (pred ** 2).mean()
+                    weighted_loss = weighted_loss + 0.01 * l2_penalty
 
                     optimizer.zero_grad()
                     weighted_loss.backward()
