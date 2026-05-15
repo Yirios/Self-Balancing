@@ -92,41 +92,68 @@ class BCModel(nn.Module):
         return self.action_net(x)
 
 
-def train_bc(model, X, Y, epochs, lr=1e-3, label="", smooth_coef=0.0):
-    loader = DataLoader(TensorDataset(
-        torch.from_numpy(X).to(DEVICE), torch.from_numpy(Y).to(DEVICE)
-    ), batch_size=256, shuffle=True)
-    # Consecutive pairs for temporal smoothness (unshuffled subset)
-    n_smooth = min(20000, len(X) - 1)
-    X_seq = torch.from_numpy(X[::len(X)//n_smooth][:n_smooth]).to(DEVICE)
-    X_seq_next = torch.from_numpy(X[1::len(X)//n_smooth][:n_smooth]).to(DEVICE)
+def train_bc(model, X, Y, epochs, lr=1e-3, label="", smooth_coef=0.0, val_split=0.2):
+    # Train/val split (sequential, not shuffled — sim data is in episode order)
+    n_val = int(len(X) * val_split)
+    X_train, Y_train = X[:-n_val], Y[:-n_val]
+    X_val, Y_val = X[-n_val:], Y[-n_val:]
+
+    X_train_t = torch.from_numpy(X_train).to(DEVICE)
+    Y_train_t = torch.from_numpy(Y_train).to(DEVICE)
+    X_val_t = torch.from_numpy(X_val).to(DEVICE)
+    Y_val_t = torch.from_numpy(Y_val).to(DEVICE)
+
+    loader = DataLoader(TensorDataset(X_train_t, Y_train_t), batch_size=256, shuffle=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
+    best_val = float('inf')
+    best_state = None
+
+    # Fixed consecutive pairs for smoothness (subset of training data, unshuffled)
+    n_smooth = min(50000, len(X_train) - 1)
+    step = max(1, len(X_train) // n_smooth)
+    X_smooth = torch.from_numpy(X_train[::step][:n_smooth]).to(DEVICE)
+    X_smooth_next = torch.from_numpy(X_train[1::step][:n_smooth]).to(DEVICE)
+
     for epoch in range(epochs):
-        total_mse = 0.0
-        total_smooth = 0.0
+        model.train()
+        train_loss = 0.0
+        smooth_loss_val = 0.0
         for bx, by in loader:
             pred = model(bx)
-            mse_loss = loss_fn(pred, by)
-            loss = mse_loss
-            if smooth_coef > 0:
-                # penalize large action changes between consecutive states
-                smooth_loss = loss_fn(model(X_seq), model(X_seq_next))
-                loss = loss + smooth_coef * smooth_loss
-                total_smooth += smooth_loss.item() * len(bx)
+            loss = loss_fn(pred, by)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            total_mse += mse_loss.item() * len(bx)
-        if (epoch + 1) % 10 == 0:
-            with torch.no_grad():
-                mae = (model(torch.from_numpy(X).to(DEVICE)) -
-                       torch.from_numpy(Y).to(DEVICE)).abs().mean().item()
-            s = f"  mse={total_mse/len(X):.1f}"
+            train_loss += loss.item() * len(bx)
+        # Smoothness: penalize large action changes between consecutive states
+        if smooth_coef > 0:
+            smooth_loss = smooth_coef * loss_fn(model(X_smooth), model(X_smooth_next))
+            optimizer.zero_grad()
+            smooth_loss.backward()
+            optimizer.step()
+            smooth_loss_val = smooth_loss.item()
+
+        # Validation
+        model.eval()
+        with torch.no_grad():
+            val_loss = loss_fn(model(X_val_t), Y_val_t).item()
+            val_mae = (model(X_val_t) - Y_val_t).abs().mean().item()
+
+        if val_loss < best_val:
+            best_val = val_loss
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+
+        if (epoch + 1) % 5 == 0:
+            s = f"  {label} epoch {epoch + 1}/{epochs}: train={train_loss/len(X_train):.1f} val={val_loss:.1f} val_mae={val_mae:.2f}"
             if smooth_coef > 0:
-                s += f"  smooth={total_smooth/len(X):.1f}"
-            print(f"  {label} epoch {epoch + 1}/{epochs}: {s}  mae={mae:.2f}")
+                s += f" smooth={smooth_loss_val:.1f}"
+            print(s)
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        print(f"  {label} best val_loss={best_val:.1f}")
 
 
 def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
@@ -169,7 +196,7 @@ if __name__ == "__main__":
     sim_obs, sim_act = collect_sim_demos(200)
 
     model = BCModel().to(DEVICE)
-    train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim", smooth_coef=0.1)
+    train_bc(model, sim_obs, sim_act, epochs=40, lr=1e-3, label="sim", smooth_coef=1.0)
 
     print("\nPhase 2: Real car data (light fine-tune)")
     real_obs, real_act = load_real_data()
