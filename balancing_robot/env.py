@@ -24,6 +24,15 @@ class BalancingRobotEnv(gymnasium.Env):
     Obs (8D): [thL-targetL, thR-targetR, theta_1, theta_2,
                theta_L_dot, theta_R_dot, theta_1_dot, theta_2_dot]
     Actions (2D): [u_L, u_R] — wheel angular accelerations (rad/s²)
+
+    When use_pi_motor=True, actions pass through a PI velocity loop +
+    PWM saturation that replicates the real STM32 firmware chain:
+        u → PI(Kp=25,Ki=35) → clip(PWM,±6900) → motor(τ, bemf) → actual accel
+    The PI integrator makes the linear system unstable (max|λ|>1.09).
+    With the firmware Ki=35, the simulated robot falls — the real hardware
+    has additional stabilizing factors (encoder timing, gear friction, etc.)
+    not yet captured. To use as a training env, reduce Ki significantly or
+    use Ki=0 (P-only) which is stable for kp*mg >= 0.2.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 200}
@@ -37,6 +46,10 @@ class BalancingRobotEnv(gymnasium.Env):
         domain_rand_scale: float = 0.0,
         h_scale: float = 1.0,
         pendulum_disturb_std: float = 0.0,
+        use_pi_motor: bool = False,
+        motor_gain: float = 0.008,
+        back_emf: float = 2.0,
+        motor_tau: float = 0.03,
     ):
         super().__init__()
         self.observation_space = spaces.Box(
@@ -53,6 +66,11 @@ class BalancingRobotEnv(gymnasium.Env):
         self.domain_rand_scale = domain_rand_scale
         self.h_scale = h_scale
         self.pendulum_disturb_std = pendulum_disturb_std
+        self.use_pi_motor = use_pi_motor
+        self.motor_gain = motor_gain
+        self.back_emf = back_emf
+        self.motor_tau = motor_tau
+        self._motor_accel = np.zeros(2)  # 1st-order motor filter state
 
         self.G = _G
         self.H = _H.copy()
@@ -66,6 +84,10 @@ class BalancingRobotEnv(gymnasium.Env):
 
         self.target_theta_L = 0.0
         self.target_theta_R = 0.0
+
+        # PI velocity loop state (matches firmware control.c Incremental_PI)
+        self._pi_pwm = np.zeros(2)
+        self._pi_last_u = np.zeros(2)
 
         self.Q_diag = np.array([0.01, 0.01, 10.0, 50.0, 0.001, 0.001, 5.0, 5.0])
         self.R_weight = 1e-5
@@ -83,6 +105,9 @@ class BalancingRobotEnv(gymnasium.Env):
         self.yaw = 0.0
         self.x_hist = [0.0]
         self.y_hist = [0.0]
+        self._pi_pwm = np.zeros(2)
+        self._pi_last_u = np.zeros(2)
+        self._motor_accel = np.zeros(2)
 
         if self.domain_rand_scale > 0:
             s = self.domain_rand_scale
@@ -148,7 +173,33 @@ class BalancingRobotEnv(gymnasium.Env):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         u = action.reshape(2)
 
-        self.state = self.G @ self.state + self.H @ u
+        if self.use_pi_motor:
+            # ── PI velocity loop + PWM saturation (matches firmware control.c) ──
+            # PI error: Bias = TargetVal - CurrentVel
+            #           = (vel + u*TS) - vel ≈ u*TS  (velocity terms cancel)
+            # Thus: pwm += Ki*TS*u + Kp*TS*(u - u_prev)
+            Kp, Ki = 25.0, 35.0
+            pwm_max = 6900.0
+            self._pi_pwm += Ki * TS * u + Kp * TS * (u - self._pi_last_u)
+            self._pi_pwm = np.clip(self._pi_pwm, -pwm_max, pwm_max)
+            self._pi_last_u = u.copy()
+
+            # Motor: PWM → wheel angular acceleration (with back-EMF + 1st-order lag)
+            # Real DC motor: τ*dω/dt + ω ∝ PWM, with back-EMF damping
+            alpha = np.exp(-TS / self.motor_tau) if self.motor_tau > 0 else 0.0
+            raw_accel = self.motor_gain * self._pi_pwm - self.back_emf * self.state[4:6]
+            self._motor_accel = alpha * self._motor_accel + (1 - alpha) * raw_accel
+            motor_accel = self._motor_accel
+
+            # State update: reuse G for natural dynamics, replace H-mediated
+            # wheel acceleration with PI+motor output
+            self.state = self.G @ self.state
+            self.state[4] += motor_accel[0] * TS
+            self.state[5] += motor_accel[1] * TS
+            self.state[6] += self.H[6, 0] * motor_accel[0] + self.H[6, 1] * motor_accel[1]
+            self.state[7] += self.H[7, 0] * motor_accel[0] + self.H[7, 1] * motor_accel[1]
+        else:
+            self.state = self.G @ self.state + self.H @ u
 
         if self.inject_noise:
             self.state += self.np_random.normal(0, NOISE_STD).astype(np.float64)
