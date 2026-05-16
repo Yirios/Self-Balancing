@@ -28,11 +28,11 @@ class BalancingRobotEnv(gymnasium.Env):
     When use_pi_motor=True, actions pass through a PI velocity loop +
     PWM saturation that replicates the real STM32 firmware chain:
         u → PI(Kp=25,Ki=35) → clip(PWM,±6900) → motor(τ, bemf) → actual accel
-    The PI integrator makes the linear system unstable (max|λ|>1.09).
-    With the firmware Ki=35, the simulated robot falls — the real hardware
-    has additional stabilizing factors (encoder timing, gear friction, etc.)
-    not yet captured. To use as a training env, reduce Ki significantly or
-    use Ki=0 (P-only) which is stable for kp*mg >= 0.2.
+
+    When data_driven=True, uses a fitted closed-loop matrix A_cl from
+    real hardware log data (calibrate_actuator.py --save). This directly
+    reproduces the measured ~0.66 Hz underdamped pendulum mode (|λ|=0.994)
+    plus estimated noise injection, matching real oscillation statistics.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 200}
@@ -50,6 +50,10 @@ class BalancingRobotEnv(gymnasium.Env):
         motor_gain: float = 0.008,
         back_emf: float = 2.0,
         motor_tau: float = 0.03,
+        pi_kp: float = 25.0,
+        pi_ki: float = 35.0,
+        data_driven: bool = False,
+        data_model_path: str = "real_data_model.npz",
     ):
         super().__init__()
         self.observation_space = spaces.Box(
@@ -70,7 +74,20 @@ class BalancingRobotEnv(gymnasium.Env):
         self.motor_gain = motor_gain
         self.back_emf = back_emf
         self.motor_tau = motor_tau
+        self.pi_kp = pi_kp
+        self.pi_ki = pi_ki
         self._motor_accel = np.zeros(2)  # 1st-order motor filter state
+
+        self.data_driven = data_driven
+        if data_driven:
+            model = np.load(data_model_path)
+            self._A_cl = model["A_cl"]
+            self._noise_cov = model["noise_cov"]
+            self._noise_scale = float(model["noise_scale"])
+        else:
+            self._A_cl = None
+            self._noise_cov = None
+            self._noise_scale = 1.0
 
         self.G = _G
         self.H = _H.copy()
@@ -173,14 +190,18 @@ class BalancingRobotEnv(gymnasium.Env):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         u = action.reshape(2)
 
-        if self.use_pi_motor:
+        if self.data_driven:
+            self.state = (self._A_cl @ self.state +
+                          self.np_random.multivariate_normal(
+                              np.zeros(8), self._noise_cov) * self._noise_scale)
+        elif self.use_pi_motor:
             # ── PI velocity loop + PWM saturation (matches firmware control.c) ──
             # PI error: Bias = TargetVal - CurrentVel
             #           = (vel + u*TS) - vel ≈ u*TS  (velocity terms cancel)
             # Thus: pwm += Ki*TS*u + Kp*TS*(u - u_prev)
-            Kp, Ki = 25.0, 35.0
             pwm_max = 6900.0
-            self._pi_pwm += Ki * TS * u + Kp * TS * (u - self._pi_last_u)
+            self._pi_pwm += (self.pi_ki * TS * u +
+                             self.pi_kp * TS * (u - self._pi_last_u))
             self._pi_pwm = np.clip(self._pi_pwm, -pwm_max, pwm_max)
             self._pi_last_u = u.copy()
 

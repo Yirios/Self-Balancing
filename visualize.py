@@ -84,12 +84,17 @@ def run_and_record(
     deterministic: bool = True,
     steps: int = 500,
     drive: tuple[float, float] = (0.0, 0.0),
+    env_kwargs: dict | None = None,
 ):
     """Run episode, record states and global positions for animation.
 
     drive = (target_theta_L, target_theta_R):  LQR position targets (rad)
+    env_kwargs: passed to gym.make (e.g. use_pi_motor, motor_gain)
     """
-    env = gym.make("BalancingRobot-v0")
+    if env_kwargs:
+        env = gym.make("BalancingRobot-v0", **env_kwargs)
+    else:
+        env = gym.make("BalancingRobot-v0")
 
     if model_type == "bc":
         bc = BCModel()
@@ -129,9 +134,15 @@ def run_and_record(
 
     print(f"Recording: {label}")
     obs, _ = env.reset(seed=42, options={"target_theta_L": target_L, "target_theta_R": target_R})
-    # Start from equilibrium position (no initial drift)
-    env.unwrapped.state[0] = target_L
-    env.unwrapped.state[1] = target_R
+    # Start from near-equilibrium (small tilt, zero velocity)
+    if env_kwargs and (env_kwargs.get("use_pi_motor") or env_kwargs.get("data_driven")):
+        env.unwrapped.state = np.zeros(8)
+        env.unwrapped.state[0] = target_L
+        env.unwrapped.state[1] = target_R
+        env.unwrapped.state[2] = 0.02  # ~1.15° tilt
+    else:
+        env.unwrapped.state[0] = target_L
+        env.unwrapped.state[1] = target_R
     obs = env.unwrapped._get_obs()
 
     states, xs, ys, yaws = [], [], [], []
@@ -301,9 +312,50 @@ if __name__ == "__main__":
         "--slalom", action="store_true",
         help="Straight → turn left → straight → turn right",
     )
+    parser.add_argument(
+        "--pi-motor", action="store_true",
+        help="Enable PI velocity loop + PWM saturation motor model",
+    )
+    parser.add_argument(
+        "--motor-gain", type=float, default=0.008,
+        help="PWM → wheel accel gain (default: 0.008)",
+    )
+    parser.add_argument(
+        "--back-emf", type=float, default=2.0,
+        help="Motor back-EMF damping (default: 2.0)",
+    )
+    parser.add_argument(
+        "--motor-tau", type=float, default=0.03,
+        help="Motor 1st-order filter time constant (default: 0.03)",
+    )
+    parser.add_argument(
+        "--pi-kp", type=float, default=25.0,
+        help="PI proportional gain (default: 25, use 0 for P-only stable mode)",
+    )
+    parser.add_argument(
+        "--pi-ki", type=float, default=35.0,
+        help="PI integral gain (default: 35, reduce to <1 for stability)",
+    )
+    parser.add_argument(
+        "--data-driven", action="store_true",
+        help="Use data-driven closed-loop model (A_cl fitted from real data)",
+    )
     args = parser.parse_args()
 
     output = args.output or f"balance_{args.model}_3d.gif"
+
+    env_kwargs = None
+    if args.data_driven:
+        env_kwargs = {"data_driven": True}
+    elif args.pi_motor:
+        env_kwargs = {
+            "use_pi_motor": True,
+            "motor_gain": args.motor_gain,
+            "back_emf": args.back_emf,
+            "motor_tau": args.motor_tau,
+            "pi_kp": args.pi_kp,
+            "pi_ki": args.pi_ki,
+        }
 
     if args.slalom:
         all_states, all_x, all_y, all_yaw = [], [], [], []
@@ -319,7 +371,8 @@ if __name__ == "__main__":
         label = f"{label_base} (slalom)"
         for seg_steps, drive in segments:
             s, x, y, yaw, _ = run_and_record(
-                args.model, deterministic=True, steps=seg_steps, drive=drive
+                args.model, deterministic=True, steps=seg_steps, drive=drive,
+                env_kwargs=env_kwargs,
             )
             all_states.extend(s)
             all_x.extend(x)
@@ -332,5 +385,6 @@ if __name__ == "__main__":
             deterministic=not args.stochastic,
             steps=args.steps,
             drive=(args.target_left, args.target_right),
+            env_kwargs=env_kwargs,
         )
         make_animation_3d(states, xs, ys, yaws, label, output)
