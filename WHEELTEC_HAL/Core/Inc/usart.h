@@ -42,6 +42,7 @@ extern UART_HandleTypeDef huart3;
 extern DMA_HandleTypeDef hdma_uart4_rx;
 extern DMA_HandleTypeDef hdma_usart3_tx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
+extern uint8_t usart1_rx_byte;
 #define FRAME_HEADER      0X7B //Frame_header //帧头
 #define FRAME_TAIL        0X7D //Frame_tail   //帧尾
 #define SEND_DATA_SIZE    24

@@ -134,6 +134,8 @@ void MX_UART5_Init(void)
 }
 /* USART1 init function */
 
+uint8_t usart1_rx_byte;  // single-byte RX buffer for ext-ctrl
+
 void MX_USART1_UART_Init(void)
 {
 
