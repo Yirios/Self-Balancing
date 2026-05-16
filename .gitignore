@@ -58,4 +58,7 @@ WHEELTEC_HAL/keilkilll.bat
 WHEELTEC_HAL/MiniBalance.ioc
 
 # CLAUDE
-CLAUDE.mdlog_100hz.csv
+CLAUDE.md
+*.csv
+*.png
+*.gif
