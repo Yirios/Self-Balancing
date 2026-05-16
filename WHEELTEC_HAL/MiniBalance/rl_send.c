@@ -59,27 +59,31 @@ void RL_Send_Data(void) {
     }
 }
 
-/* Poll USART1 RX for PC-u commands.  Call once per 10ms control cycle. */
+/* Interrupt-driven USART1 RX for PC ext-ctrl commands. */
+/* HAL_UART_RxCpltCallback parses received bytes and sets ext_u_fresh directly. */
+/* RL_Recv_ExtCtrl just handles the timeout (called from 10ms control ISR). */
+
 void RL_Recv_ExtCtrl(void) {
-    while (USART1->SR & USART_SR_RXNE) {
-        uint8_t b = USART1->DR;
-        if (rx_idx == 0 && b == EXT_CTRL_SYNC) {
-            rx_buf[0] = b; rx_idx = 1;
-        } else if (rx_idx > 0 && rx_idx < EXT_CTRL_SIZE) {
-            rx_buf[rx_idx++] = b;
-            if (rx_idx == EXT_CTRL_SIZE) {
-                float *f = (float *)(rx_buf + 1);
-                ext_u_L = f[0]; ext_u_R = f[1];
-                ext_u_fresh = 1; ext_timeout = 0; rx_idx = 0;
-                rx_idx = 0;
-            }
-        } else {
-            rx_idx = 0;
-        }
-    }
-    // Timeout: fallback to internal LQR after EXT_TIMEOUT_MAX cycles
     if (ext_timeout < EXT_TIMEOUT_MAX)
         ext_timeout++;
     else
         ext_u_fresh = 0;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance != USART1) return;
+    uint8_t b = usart1_rx_byte;
+    HAL_UART_Receive_IT(&huart1, &usart1_rx_byte, 1);  // re-arm
+    if (rx_idx == 0 && b == EXT_CTRL_SYNC) {
+        rx_buf[0] = b; rx_idx = 1;
+    } else if (rx_idx > 0 && rx_idx < EXT_CTRL_SIZE) {
+        rx_buf[rx_idx++] = b;
+        if (rx_idx == EXT_CTRL_SIZE) {
+            float *f = (float *)(rx_buf + 1);
+            ext_u_L = f[0]; ext_u_R = f[1];
+            ext_u_fresh = 1; ext_timeout = 0; rx_idx = 0;
+        }
+    } else {
+        rx_idx = 0;
+    }
 }
