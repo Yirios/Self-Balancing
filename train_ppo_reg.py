@@ -11,20 +11,23 @@ from kl_ppo import KLRegularizedPPO, BCReference
 
 BC_COEF = 0.01
 
-def make_env(inject_noise=False, domain_rand_scale=0.0, pendulum_disturb_std=0.0):
+def make_env(inject_noise=False, domain_rand_scale=0.0, pendulum_disturb_std=0.0,
+            data_driven=False):
     return Monitor(gym.make("BalancingRobot-v0",
         inject_noise=inject_noise, domain_rand_scale=domain_rand_scale,
-        pendulum_disturb_std=pendulum_disturb_std))
+        pendulum_disturb_std=pendulum_disturb_std, data_driven=data_driven))
 
 
 if __name__ == "__main__":
     # Train with noise + domain randomization + pendulum disturbance
     env = DummyVecEnv([lambda: make_env(inject_noise=True, domain_rand_scale=0.05,
-                                        pendulum_disturb_std=0.8) for _ in range(4)])
+                                        pendulum_disturb_std=0.8,
+                                        data_driven=True) for _ in range(4)])
     env = VecNormalize(env, norm_obs=False, norm_reward=True)
 
     # Eval on clean environment
-    eval_env = DummyVecEnv([lambda: make_env(inject_noise=False, domain_rand_scale=0.0)])
+    eval_env = DummyVecEnv([lambda: make_env(inject_noise=False, domain_rand_scale=0.0,
+                                            data_driven=True)])
     eval_env = VecNormalize(eval_env, norm_obs=False, norm_reward=False)
 
     policy_kwargs = dict(net_arch=[32, 32], activation_fn=torch.nn.ReLU)
@@ -36,12 +39,12 @@ if __name__ == "__main__":
     model = KLRegularizedPPO(
         "MlpPolicy",
         env,
-        learning_rate=1e-4,
+        learning_rate=5e-5,
         n_steps=1024,
         batch_size=128,
-        n_epochs=5,
+        n_epochs=3,
         gamma=0.99,
-        clip_range=0.1,
+        clip_range=0.05,
         ent_coef=0.01,
         policy_kwargs=policy_kwargs,
         bc_policy=bc_ref,
@@ -50,7 +53,7 @@ if __name__ == "__main__":
         device="cpu",
     )
     load_bc_into_ppo(bc, model)
-    print(f"KL-regularized PPO: bc_coef={BC_COEF}")
+    print(f"KL-regularized PPO: bc_coef={BC_COEF} lr=5e-5 init from LQR-K")
 
     print("Starting training...")
     eval_callback = EvalCallback(

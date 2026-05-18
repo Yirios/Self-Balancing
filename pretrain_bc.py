@@ -45,7 +45,7 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
     """LQR + OU noise in simulation."""
     obs_list, act_list = [], []
     env = BalancingRobotEnv(inject_noise=True, domain_rand_scale=0.0,
-                            pendulum_disturb_std=0.8)
+                            pendulum_disturb_std=0.8, data_driven=True)
 
     for ep in range(n_episodes):
         obs, _ = env.reset()
@@ -64,7 +64,7 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
             u = np.clip(u_lqr + ou * noise_scale, -5000, 5000)
 
             obs_list.append(obs.copy())
-            act_list.append(u.copy())
+            act_list.append(np.clip(u_lqr, -5000, 5000))
 
             obs, _, terminated, truncated, _ = env.step(u)
             done = terminated or truncated
@@ -78,11 +78,15 @@ def collect_sim_demos(n_episodes: int = 200) -> tuple[np.ndarray, np.ndarray]:
 
 
 class BCModel(nn.Module):
-    """Linear 8→2 — directly learns LQR K matrix."""
+    """MLP 8→16→2."""
 
     def __init__(self):
         super().__init__()
-        self.net = nn.Linear(8, 2)
+        self.net = nn.Sequential(
+            nn.Linear(8, 16, bias=True),
+            nn.ReLU(),
+            nn.Linear(16, 2, bias=True),
+        )
 
     def forward(self, x):
         return self.net(x)
@@ -158,27 +162,34 @@ def load_bc_into_ppo(bc_model: BCModel, ppo_model) -> None:
     def _copy(dst, src):
         dst.data.copy_(src.data.to(dst.device))
 
-    # BC: net = Linear(8,2)
-    # PPO: policy_net[0]=Linear(8,32), policy_net[2]=Linear(32,32), action_net=Linear(32,2)
-    W = bc_model.net.weight.data  # 2×8
-    B = bc_model.net.bias.data    # 2
-    # Embed BC weights into PPO's larger architecture
-    # policy_net[0]: expand 2→32 output dims, fill with BC weights + zeros
+    # BC: Linear(8,16) → ReLU → Linear(16,2)
+    # PPO: policy_net[0]=Linear(8,32), policy_net[2]=Linear(32,32),
+    #      action_net=Linear(32,2)
+    W1 = bc_model.net[0].weight.data  # 16×8
+    b1 = bc_model.net[0].bias.data    # 16
+    W2 = bc_model.net[2].weight.data  # 2×16
+    b2 = bc_model.net[2].bias.data    # 2
+    H = 16  # BC hidden dim
+
+    # policy_net[0] (8→32): copy BC W1 into top H rows, zero rest
     ppo_pn[0].weight.data.zero_()
-    ppo_pn[0].weight.data[:2] = W
+    ppo_pn[0].weight.data[:H] = W1
     ppo_pn[0].bias.data.zero_()
-    ppo_pn[0].bias.data[:2] = B
-    # policy_net[2]: identity for first 2 dims, zero others
+    ppo_pn[0].bias.data[:H] = b1
+
+    # policy_net[2] (32→32): identity for first H dims, zero rest
     nn.init.eye_(ppo_pn[2].weight)
     nn.init.zeros_(ppo_pn[2].bias)
-    # action_net: copy BC weights into first 2 columns
+
+    # action_net (32→2): copy BC W2 into first H columns, set bias
     ppo_model.policy.action_net.weight.data.zero_()
-    ppo_model.policy.action_net.weight.data[:, :2] = torch.eye(2)
+    ppo_model.policy.action_net.weight.data[:, :H] = W2
     ppo_model.policy.action_net.bias.data.zero_()
+    ppo_model.policy.action_net.bias.data[:] = b2
 
 
 def eval_bc(bc_model: BCModel, n_episodes: int = 20):
-    env = BalancingRobotEnv()
+    env = BalancingRobotEnv(data_driven=True)
     lengths = []
     for _ in range(n_episodes):
         obs, _ = env.reset()
@@ -202,23 +213,16 @@ if __name__ == "__main__":
     print("Phase 1: Simulated LQR+OU demos")
     sim_obs, sim_act = collect_sim_demos(200)
 
-    # OLS: direct linear fit (matches LQR exactly since LQR is linear)
-    X = np.concatenate([sim_obs, sim_act], axis=0) if False else sim_obs
-    W = np.linalg.lstsq(sim_obs, sim_act, rcond=None)[0]  # 8×2
-    print(f"  OLS fitted: W max|abs|={np.max(np.abs(W)):.0f}")
-
     model = BCModel().to(DEVICE)
-    with torch.no_grad():
-        model.net.weight.copy_(torch.from_numpy(W.T.astype(np.float32)))
-        model.net.bias.zero_()
+    train_bc(model, sim_obs, sim_act, epochs=50, lr=1e-3, label="sim",
+             smooth_coef=0.0, val_split=0.1)
 
-    print("\nPhase 2: Real car data (light fine-tune via weighted OLS)")
+    print("\nPhase 2: Real car data (fine-tune)")
     real_obs, real_act = load_real_data()
-    X_mix = np.concatenate([sim_obs, real_obs])
-    Y_mix = np.concatenate([sim_act, real_act])
-    W_mix = np.linalg.lstsq(X_mix, Y_mix, rcond=None)[0]
-    with torch.no_grad():
-        model.net.weight.copy_(torch.from_numpy(W_mix.T.astype(np.float32)))
+    X_mix = np.concatenate([sim_obs, real_obs]).astype(np.float32)
+    Y_mix = np.concatenate([sim_act, real_act]).astype(np.float32)
+    train_bc(model, X_mix, Y_mix, epochs=15, lr=3e-4, label="mix",
+             smooth_coef=0.0, val_split=0.05)
 
     print("\nEvaluating...")
     eval_bc(model)

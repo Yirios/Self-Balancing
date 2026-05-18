@@ -29,10 +29,10 @@ class BalancingRobotEnv(gymnasium.Env):
     PWM saturation that replicates the real STM32 firmware chain:
         u → PI(Kp=25,Ki=35) → clip(PWM,±6900) → motor(τ, bemf) → actual accel
 
-    When data_driven=True, uses a fitted closed-loop matrix A_cl from
-    real hardware log data (calibrate_actuator.py --save). This directly
-    reproduces the measured ~0.66 Hz underdamped pendulum mode (|λ|=0.994)
-    plus estimated noise injection, matching real oscillation statistics.
+    When data_driven=True, uses a fitted plant model A_plant, B_plant from
+    real hardware log data (fit_plant.py). This captures PI velocity loop +
+    motor response + friction + sensor dynamics without embedding LQR,
+    so any controller (LQR, BC, RL) can drive the system through u.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 200}
@@ -81,10 +81,16 @@ class BalancingRobotEnv(gymnasium.Env):
         self.data_driven = data_driven
         if data_driven:
             model = np.load(data_model_path)
-            self._A_cl = model["A_cl"]
+            # New format: open-loop plant model A_plant, B_plant
+            self._A_plant = model.get("A_plant")
+            self._B_plant = model.get("B_plant")
+            # Legacy format: closed-loop A_cl (ignores action)
+            self._A_cl = model.get("A_cl")
             self._noise_cov = model["noise_cov"]
             self._noise_scale = float(model["noise_scale"])
         else:
+            self._A_plant = None
+            self._B_plant = None
             self._A_cl = None
             self._noise_cov = None
             self._noise_scale = 1.0
@@ -168,8 +174,10 @@ class BalancingRobotEnv(gymnasium.Env):
             )
         else:
             self.state = np.zeros(8)
-            self.state[0] = self.np_random.uniform(-60, 60)  # theta_L: covers real-car startup error
-            self.state[1] = self.np_random.uniform(-60, 60)
+            # Wheel position error: keep modest (±2 rad ≈ 1/3 turn) so that
+            # LQR can recover even through a realistic PI+motor plant.
+            self.state[0] = self.np_random.uniform(-2, 2)
+            self.state[1] = self.np_random.uniform(-2, 2)
             self.state[2] = self.np_random.uniform(-0.1745, 0.1745)
             self.state[3] = self.np_random.uniform(-0.1745, 0.1745)
             self.state[4:8] = self.np_random.uniform(-0.1, 0.1, size=4)
@@ -191,9 +199,13 @@ class BalancingRobotEnv(gymnasium.Env):
         u = action.reshape(2)
 
         if self.data_driven:
-            self.state = (self._A_cl @ self.state +
-                          self.np_random.multivariate_normal(
-                              np.zeros(8), self._noise_cov) * self._noise_scale)
+            noise = self.np_random.multivariate_normal(
+                np.zeros(8), self._noise_cov) * self._noise_scale
+            if self._A_plant is not None:
+                self.state = (self._A_plant @ self.state +
+                              self._B_plant @ u + noise)
+            else:
+                self.state = self._A_cl @ self.state + noise
         elif self.use_pi_motor:
             # ── PI velocity loop + PWM saturation (matches firmware control.c) ──
             # PI error: Bias = TargetVal - CurrentVel
