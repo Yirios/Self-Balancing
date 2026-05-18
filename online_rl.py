@@ -137,11 +137,20 @@ def build_state(data: dict) -> np.ndarray:
     ])
 
 
-def compute_reward(data: dict, alpha: float) -> float:
-    """Quadratic cost penalizing tilt and control effort."""
+def compute_reward(data: dict, last_u: np.ndarray | None = None) -> float:
+    """Quadratic cost penalizing tilt, oscillation, and control effort.
+
+    Oscillation penalty on angular velocities discourages the ~1 Hz
+    limit cycle that the real LQR+PI loop exhibits.
+    """
     cost = (10.0 * data["theta_1"] ** 2 +
             50.0 * data["theta_2"] ** 2 +
+            2.0 * data["theta_dot_1"] ** 2 +     # body angular velocity
+            5.0 * data["theta_dot_2"] ** 2 +     # pendulum angular velocity
             1e-5 * (data["u_L"] ** 2 + data["u_R"] ** 2))
+    if last_u is not None:
+        du = np.array([data["u_L"], data["u_R"]]) - last_u
+        cost += 1e-7 * np.sum(du ** 2)            # control smoothness
     return -cost
 
 
@@ -152,12 +161,12 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
                 perturb_steps: int = 0) -> list:
     """Run one episode with (1-α)*LQR + α*MLP blend.
 
-    perturb_steps: if > 0, send asymmetric pulse for first N steps
-                   to disturb the car into oscillation before RL takes over.
+    perturb_steps: if > 0, symmetric turn pulse for first N steps.
     """
     buffer = []
     last_obs = None
     last_action = None
+    last_u = None  # for control smoothness penalty
 
     for step in range(max_steps):
         pkts = io.read_packets()
@@ -177,15 +186,14 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
         with torch.no_grad():
             inp = torch.from_numpy(obs).float().to(DEVICE)
             u_mlp = model(inp).cpu().numpy()
-        u_blend = (1 - alpha) * u_lqr + alpha * u_mlp
 
-        # PC sends delta = α·(u_mlp - u_lqr), STM32 adds to its own LQR
-        delta = alpha * (u_mlp - u_lqr)
-
-        # Perturbation: asymmetric pulse to excite oscillation
+        # Perturbation pulse at episode start
         if step < perturb_steps:
-            delta += np.array([800.0, -800.0])  # strong turn disturbance
+            pulse = np.array([2000.0, 2000.0])
+        else:
+            pulse = np.zeros(2)
 
+        delta = alpha * (u_mlp - u_lqr) + pulse
         io.send_action(delta[0], delta[1])
 
         if verbose and step < 10:
@@ -193,17 +201,19 @@ def run_episode(io: SerialIO, model: ResidualMLP, alpha: float,
             print(f"  step {step}: th1={th1:+.2f}deg "
                   f"STM32_u=({data['u_L']:.0f},{data['u_R']:.0f}) "
                   f"PC_delta=({delta[0]:.0f},{delta[1]:.0f}) "
-                  f"u_blend=({u_blend[0]:.0f},{u_blend[1]:.0f})")
+                  f"MLP_out=({u_mlp[0]:.0f},{u_mlp[1]:.0f})")
 
-        reward = compute_reward(data, alpha)
+        reward = compute_reward(data, last_u)
         terminated = bool(abs(data["theta_1"]) > 0.7854 or
                           abs(data["theta_2"]) > 0.7854)
 
         if last_obs is not None:
             buffer.append((last_obs, last_action, reward, obs, terminated))
 
+        last_u = np.array([data["u_L"], data["u_R"]])
+
         last_obs = obs
-        last_action = u_mlp - u_lqr  # store the residual, not the delta
+        last_action = u_mlp - u_lqr  # store clean residual (without noise)
 
         if terminated:
             print(f"  Episode terminated at step {step} "
@@ -271,10 +281,10 @@ if __name__ == "__main__":
     try:
         while True:
             episode += 1
-            print(f"Episode {episode}  α={alpha:.3f}  "
+            print(f"Episode {episode}  α={alpha:.4f}  "
                   f"buffer={len(replay)}/{BUF_CAPACITY}")
 
-            ep_buffer = run_episode(io, model, alpha,
+            ep_buffer = run_episode(io, model, alpha, verbose=False,
                                     perturb_steps=args.perturb)
             replay.extend(ep_buffer)
             print(f"  Collected {len(ep_buffer)} steps")
@@ -285,11 +295,12 @@ if __name__ == "__main__":
                 if now - last_update > UPDATE_INTERVAL:
                     idx = np.random.choice(
                         len(replay), min(args.batch_size, len(replay)))
-                    batch_obs = torch.tensor([replay[i][0] for i in idx],
+                    batch = [replay[i] for i in idx]
+                    batch_obs = torch.tensor(np.array([b[0] for b in batch]),
                                              dtype=torch.float32, device=DEVICE)
-                    batch_act = torch.tensor([replay[i][1] for i in idx],
+                    batch_act = torch.tensor(np.array([b[1] for b in batch]),
                                              dtype=torch.float32, device=DEVICE)
-                    batch_rew = torch.tensor([replay[i][2] for i in idx],
+                    batch_rew = torch.tensor(np.array([b[2] for b in batch]),
                                              dtype=torch.float32, device=DEVICE)
 
                     # Weighted regression: higher-reward transitions matter more
