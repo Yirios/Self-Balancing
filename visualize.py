@@ -98,7 +98,7 @@ def run_and_record(
 
     if model_type == "bc":
         bc = BCModel()
-        bc.load_state_dict(torch.load("bc_model.pt", map_location="cpu"))
+        bc.load_state_dict(torch.load("models/bc_model.pt", map_location="cpu"))
         bc.eval()
 
         def policy(obs):
@@ -106,7 +106,7 @@ def run_and_record(
 
         label = "BC (LQR imitation)"
     elif model_type == "ppo":
-        model = PPO.load("best_model_reg/best_model", device="cpu")
+        model = PPO.load("models/best_model_reg/best_model", device="cpu")
 
         def policy(obs):
             return model.predict(obs, deterministic=deterministic)[0]
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    output = args.output or f"balance_{args.model}_3d.gif"
+    output = args.output or f"outputs/gifs/balance_{args.model}_3d.gif"
 
     env_kwargs = None
     if args.data_driven:

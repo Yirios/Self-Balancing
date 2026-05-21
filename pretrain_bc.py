@@ -16,9 +16,9 @@ STATE_NAMES = [
     "theta_L_dot", "theta_R_dot", "theta_dot_1", "theta_dot_2",
 ]
 REAL_FILES = [
-    "realcar/balance_steady_1.csv", "realcar/balance_steady_2.csv",
-    "realcar/balance_disturb_1.csv", "realcar/balance_disturb_2.csv",
-    "realcar/balance_line.csv", "realcar/balance_turn.csv",
+    "data/realcar/balance_steady_1.csv", "data/realcar/balance_steady_2.csv",
+    "data/realcar/balance_disturb_1.csv", "data/realcar/balance_disturb_2.csv",
+    "data/realcar/balance_line.csv", "data/realcar/balance_turn.csv",
 ]
 
 
@@ -226,5 +226,5 @@ if __name__ == "__main__":
 
     print("\nEvaluating...")
     eval_bc(model)
-    torch.save(model.state_dict(), "bc_model.pt")
-    print("BC model saved as bc_model.pt")
+    torch.save(model.state_dict(), "models/bc_model.pt")
+    print("BC model saved as models/bc_model.pt")

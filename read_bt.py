@@ -287,7 +287,7 @@ if __name__ == "__main__":
                         help="Serial baud (default: 115200)")
     parser.add_argument("-t", "--time", type=float, default=30.0,
                         help="Duration in seconds (default: 30)")
-    parser.add_argument("-o", "--output", default="wheeltc_log.csv")
+    parser.add_argument("-o", "--output", default="data/logs/wheeltc_log.csv")
     parser.add_argument("--raw", action="store_true",
                         help="Raw dump mode (no parsing, print to console)")
 

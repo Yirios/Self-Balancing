@@ -5,7 +5,7 @@ Usage:
     uv run python plot_log.py log_100_2hz.csv -t 2 5    # zoom t=2-5s
     uv run python plot_log.py log_100_2hz.csv --ylim 18 # y-axis +/-18deg
 """
-import argparse, csv
+import argparse, csv, os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -51,6 +51,6 @@ ax2.legend(loc='upper left')
 ax2.grid(True, alpha=0.3)
 
 plt.tight_layout()
-out = name.replace('.csv', '.png')
+out = 'outputs/plots/' + os.path.basename(name).replace('.csv', '.png')
 plt.savefig(out, dpi=150)
 print(f'Saved {out}')

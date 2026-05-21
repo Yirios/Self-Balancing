@@ -23,7 +23,7 @@ STATE_KEYS = ['theta_L', 'theta_R', 'theta_1', 'theta_2',
               'theta_L_dot', 'theta_R_dot', 'theta_dot_1', 'theta_dot_2']
 ACTION_KEYS = ['u_L', 'u_R']
 
-files = sorted(glob.glob("realcar/balance_*.csv"))
+files = sorted(glob.glob("data/realcar/balance_*.csv"))
 print(f"Loading {len(files)} files: {files}")
 
 X_curr, U_curr, X_next = [], [], []
@@ -109,10 +109,10 @@ eigs_ideal = np.linalg.eigvals(G - H @ K)
 print(f"\nIdeal G - H@K: max|λ| = {max(abs(eigs_ideal)):.6f}")
 
 # --- Save ---
-np.savez("real_data_model.npz",
+np.savez("data/real_data_model.npz",
          A_plant=A_plant, B_plant=B_plant,
          noise_cov=noise_cov, noise_scale=1.0)
-print("\nSaved real_data_model.npz (A_plant, B_plant, noise_cov)")
+print("\nSaved data/real_data_model.npz (A_plant, B_plant, noise_cov)")
 
 # --- Quick time-domain verification ---
 rng = np.random.RandomState(42)

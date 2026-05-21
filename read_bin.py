@@ -91,7 +91,7 @@ if __name__ == "__main__":
                         help="USB serial port (e.g. COM3, /dev/ttyUSB0)")
     parser.add_argument("-b", "--baud", type=int, default=460800)
     parser.add_argument("-t", "--time", type=float, default=30.0, help="Duration (s)")
-    parser.add_argument("-o", "--output", default="binary_log.csv", help="Output CSV")
+    parser.add_argument("-o", "--output", default="data/logs/binary_log.csv", help="Output CSV")
     parser.add_argument("--tcp", type=str, default=None, help="WiFi IP (legacy)")
     parser.add_argument("-p", "--port", type=int, default=6390)
     args = parser.parse_args()

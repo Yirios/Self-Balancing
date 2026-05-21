@@ -44,9 +44,12 @@ uv.lock
 # Backup
 backup_*/
 
-# other
+# data
+data/
 ref
-realcar
+*.csv
+*.png
+*.gif
 
 # source 
 WHEELTEC_HAL/Drivers/
@@ -59,6 +62,3 @@ WHEELTEC_HAL/MiniBalance.ioc
 
 # CLAUDE
 CLAUDE.md
-*.csv
-*.png
-*.gif

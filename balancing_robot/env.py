@@ -53,7 +53,7 @@ class BalancingRobotEnv(gymnasium.Env):
         pi_kp: float = 25.0,
         pi_ki: float = 35.0,
         data_driven: bool = False,
-        data_model_path: str = "real_data_model.npz",
+        data_model_path: str = "data/real_data_model.npz",
     ):
         super().__init__()
         self.observation_space = spaces.Box(

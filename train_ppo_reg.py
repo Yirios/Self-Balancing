@@ -33,7 +33,7 @@ if __name__ == "__main__":
     policy_kwargs = dict(net_arch=[32, 32], activation_fn=torch.nn.ReLU)
 
     bc = BCModel()
-    bc.load_state_dict(torch.load("bc_model.pt", map_location="cpu"))
+    bc.load_state_dict(torch.load("models/bc_model.pt", map_location="cpu"))
     bc_ref = BCReference(bc)
 
     model = KLRegularizedPPO(
@@ -58,13 +58,13 @@ if __name__ == "__main__":
     print("Starting training...")
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./best_model_reg/",
+        best_model_save_path="./models/best_model_reg/",
         eval_freq=10000,
         verbose=1,
     )
 
     model.learn(total_timesteps=1_500_000, callback=eval_callback)
 
-    model.save("ppo_balance_bot_kl")
-    env.save("vec_normalize.pkl")
+    model.save("models/ppo_balance_bot_kl")
+    env.save("models/vec_normalize.pkl")
     print("Training done.")

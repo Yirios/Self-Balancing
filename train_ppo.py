@@ -17,7 +17,7 @@ def make_env():
 if __name__ == "__main__":
     # Load BC model (already trained)
     bc = BCModel()
-    bc.load_state_dict(torch.load("bc_model.pt", map_location="cpu"))
+    bc.load_state_dict(torch.load("models/bc_model.pt", map_location="cpu"))
 
     env = DummyVecEnv([make_env for _ in range(4)])
     env = VecNormalize(env, norm_obs=False, norm_reward=True)
@@ -47,12 +47,12 @@ if __name__ == "__main__":
     print("Starting PPO fine-tuning...")
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./best_model/",
+        best_model_save_path="./models/best_model/",
         eval_freq=10000,
         verbose=1,
     )
 
     model.learn(total_timesteps=1_500_000, callback=eval_callback)
-    model.save("ppo_balance_bot")
-    env.save("vec_normalize.pkl")
+    model.save("models/ppo_balance_bot")
+    env.save("models/vec_normalize.pkl")
     print("Training done.")

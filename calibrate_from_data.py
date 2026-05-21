@@ -13,12 +13,12 @@ STATE_NAMES = [
     "theta_L_dot", "theta_R_dot", "theta_dot_1", "theta_dot_2",
 ]
 FILES = [
-    "realcar/balance_steady_1.csv",
-    "realcar/balance_steady_2.csv",
-    "realcar/balance_disturb_1.csv",
-    "realcar/balance_disturb_2.csv",
-    "realcar/balance_line.csv",
-    "realcar/balance_turn.csv",
+    "data/realcar/balance_steady_1.csv",
+    "data/realcar/balance_steady_2.csv",
+    "data/realcar/balance_disturb_1.csv",
+    "data/realcar/balance_disturb_2.csv",
+    "data/realcar/balance_line.csv",
+    "data/realcar/balance_turn.csv",
 ]
 
 

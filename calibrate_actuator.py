@@ -21,7 +21,7 @@ _, _, G, H = compute_state_space()
 K = get_lqr_gains()
 
 # ─── Load real data ───
-with open("realcar/balance_disturb_2.csv") as f:
+with open("data/realcar/balance_disturb_2.csv") as f:
     rows = list(csv.DictReader(f))
 real = np.array([[float(r[k]) for k in [
     "theta_1", "theta_2", "theta_L_dot", "u_L"
@@ -411,7 +411,7 @@ if __name__ == "__main__" and "--save" in __import__("sys").argv:
     STATE_KEYS = ['theta_L', 'theta_R', 'theta_1', 'theta_2',
                   'theta_L_dot', 'theta_R_dot', 'theta_dot_1', 'theta_dot_2']
 
-    files = sorted(glob.glob("realcar/balance_*.csv"))
+    files = sorted(glob.glob("data/realcar/balance_*.csv"))
     print(f"Files: {files}")
 
     X_all, Xn_all = [], []
@@ -438,10 +438,10 @@ if __name__ == "__main__" and "--save" in __import__("sys").argv:
     noise_cov = np.cov(residuals.T)
 
     # Save
-    np.savez("real_data_model.npz", A_cl=A_cl, noise_cov=noise_cov,
+    np.savez("data/real_data_model.npz", A_cl=A_cl, noise_cov=noise_cov,
              noise_scale=1.3)
 
-    print(f"\nSaved real_data_model.npz")
+    print(f"\nSaved data/real_data_model.npz")
     print(f"  A_cl shape: {A_cl.shape}")
     print(f"  noise_cov shape: {noise_cov.shape}")
     print(f"  noise_scale: 1.3 (tuned to match th1_std)")
