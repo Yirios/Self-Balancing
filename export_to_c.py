@@ -87,20 +87,33 @@ def export_mlp(weights, biases, output_path):
 
 
 def export_residual(state_dict, output_path):
-    """Residual bottleneck: 8→16 ReLU → 16→4 LeakyReLU → 4→16 LeakyReLU → + → 16→2."""
-    # State dict keys from SB3
+    """Residual bottleneck: 8→16 ReLU → 16→4 LeakyReLU → 4→16 LeakyReLU → + → 16→2.
+
+    state_dict keys are mapped by the caller to use 'policy.features_extractor.*' etc.
+    """
     W1 = state_dict["policy.features_extractor.encoder_w"]          # 16×8
     W_down = state_dict["policy.features_extractor.down.weight"]    # 4×16
     W_up = state_dict["policy.features_extractor.up.weight"]        # 16×4
     W2 = state_dict["policy.action_net.weight"]                     # 2×16
     b2 = state_dict["policy.action_net.bias"]                       # 2
 
+    # Bake input standardization into W1 (trained on (obs-x_mean)/x_std)
+    xm = state_dict.get("policy.features_extractor.x_mean", None)
+    xs = state_dict.get("policy.features_extractor.x_std", None)
+    if xm is not None:
+        x_mean = xm.flatten()
+        x_std = xs.flatten()
+        W1_baked = W1 / x_std.reshape(1, -1)           # column-wise
+        b1 = -(W1_baked @ x_mean)                       # bias from mean shift
+    else:
+        W1_baked = W1
+        b1 = np.zeros(W1.shape[0], dtype=np.float32)
+
     IN, H = W1.shape[1], W1.shape[0]
     B = W_down.shape[0]
     OUT = W2.shape[0]
     assert IN == 8 and H == 16 and B == 4 and OUT == 2
 
-    # Detect if bias is effectively zero
     def arr_c(name, arr):
         flat = arr.flatten()
         return f"static const float {name}[{len(flat)}] = {{{', '.join(f'{v:.8f}f' for v in flat)}}};"
@@ -116,8 +129,9 @@ def export_residual(state_dict, output_path):
     lines.append(f"#define NN_BOTTLENECK {B}")
     lines.append(f"#define NN_OUTPUT_DIM {OUT}")
     lines.append("")
-    lines.append(f"// Encoder: Linear({IN}, {H})")
-    lines.append(arr_c("nn_w1", W1))
+    lines.append(f"// Encoder: Linear({IN}, {H}) (standardization baked into weights)")
+    lines.append(arr_c("nn_w1", W1_baked))
+    lines.append(arr_c("nn_b1", b1))
     lines.append("")
     lines.append(f"// Bottleneck down: Linear({H}, {B})")
     lines.append(arr_c("nn_w_down", W_down))
@@ -125,7 +139,7 @@ def export_residual(state_dict, output_path):
     lines.append(f"// Bottleneck up: Linear({B}, {H})")
     lines.append(arr_c("nn_w_up", W_up))
     lines.append("")
-    lines.append(f"// Decoder: Linear({H}, {OUT})")
+    lines.append(f"// Decoder: Linear({H}, {OUT}) (output de-standardization baked in)")
     lines.append(arr_c("nn_w2", W2))
     lines.append(arr_c("nn_b2", b2))
     lines.append("")
@@ -135,9 +149,9 @@ def export_residual(state_dict, output_path):
     lines.append(f"    float z[{B}];")
     lines.append(f"    float h2[{H}];")
     lines.append("")
-    lines.append("    // Encoder: 8→16 ReLU")
+    lines.append("    // Encoder: 8→16 ReLU (standardization baked into W1 + b1)")
     lines.append(f"    for (int i = 0; i < {H}; ++i) {{")
-    lines.append("        float sum = 0.0f;")
+    lines.append("        float sum = nn_b1[i];")
     lines.append(f"        for (int j = 0; j < {IN}; ++j) sum += nn_w1[i * {IN} + j] * input[j];")
     lines.append("        h1[i] = (sum > 0.0f) ? sum : 0.0f;")
     lines.append("    }")
@@ -171,9 +185,9 @@ def export_residual(state_dict, output_path):
         f.write("\n".join(lines))
     print(f"Saved: {output_path}")
 
-    # Verify numerically
+    # Verify numerically (using baked weights, matching C code)
     test = np.array([0.1, -0.05, 0.15, -0.10, 0.02, 0.03, -0.01, 0.0], dtype=np.float32)
-    h1 = np.maximum(W1 @ test, 0)
+    h1 = np.maximum(W1_baked @ test + b1, 0)
     z = np.where(W_down @ h1 > 0, W_down @ h1, 0.01 * (W_down @ h1))
     h2 = np.where(W_up @ z > 0, W_up @ z, 0.01 * (W_up @ z)) + h1
     c_out = W2 @ h2 + b2
@@ -229,6 +243,11 @@ def export(model_path: str, output_path: str = "balance_nn.h"):
                 "policy.action_net.weight": sd["action_net.weight"],
                 "policy.action_net.bias": sd["action_net.bias"],
             }
+            # Include standardization parameters if present
+            for buf in ("x_mean", "x_std"):
+                k = f"{prefix}{buf}"
+                if k in sd:
+                    residual_sd[f"policy.features_extractor.{buf}"] = sd[k]
             export_residual(residual_sd, output_path)
         else:
             # Standard MLP PPO
