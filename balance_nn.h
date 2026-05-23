@@ -1,1 +1,1 @@
-./WHEELTEC_HAL/MiniBalance/Inc/balance_nn.h
+WHEELTEC_HAL/MiniBalance/Inc/balance_nn.h

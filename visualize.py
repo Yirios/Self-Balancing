@@ -81,6 +81,7 @@ def _robot_vertices(x, y, yaw, theta_1, theta_2):
 
 def run_and_record(
     model_type: str,
+    model_path: str = None,
     deterministic: bool = True,
     steps: int = 500,
     drive: tuple[float, float] = (0.0, 0.0),
@@ -88,8 +89,10 @@ def run_and_record(
 ):
     """Run episode, record states and global positions for animation.
 
-    drive = (target_theta_L, target_theta_R):  LQR position targets (rad)
-    env_kwargs: passed to gym.make (e.g. use_pi_motor, motor_gain)
+    drive = (dL, dR): per-step position target increments (rad/step).
+    Mimics firmware Normal(): Target_theta += movement_speed each 10ms.
+    Real firmware values: movement_speed ~0.008, turn_speed ~0.002.
+    For visualization we use larger values for visible movement.
     """
     if env_kwargs:
         env = gym.make("BalancingRobot-v0", **env_kwargs)
@@ -97,16 +100,24 @@ def run_and_record(
         env = gym.make("BalancingRobot-v0")
 
     if model_type == "bc":
-        bc = BCModel()
-        bc.load_state_dict(torch.load("models/bc_model.pt", map_location="cpu"))
+        from pretrain_bc import load_bc_full
+        bc, xm, xs, ym, ys = load_bc_full("models/bc_model.pt")
         bc.eval()
+        xm_t = xm.clone().detach()
+        xs_t = xs.clone().detach()
+        ym_t = ym.clone().detach()
+        ys_t = ys.clone().detach()
 
         def policy(obs):
-            return bc(torch.from_numpy(obs.astype(np.float32))).detach().numpy()
+            inp = torch.from_numpy(obs.astype(np.float32))
+            inp_s = (inp - xm_t) / xs_t
+            out_s = bc(inp_s)
+            return (out_s * ys_t + ym_t).detach().numpy()
 
         label = "BC (LQR imitation)"
     elif model_type == "ppo":
-        model = PPO.load("models/best_model_reg/best_model", device="cpu")
+        path = model_path or "models/best_model_reg/best_model"
+        model = PPO.load(path, device="cpu")
 
         def policy(obs):
             return model.predict(obs, deterministic=deterministic)[0]
@@ -128,28 +139,29 @@ def run_and_record(
     else:
         raise ValueError(f"Unknown model: {model_type}")
 
-    target_L, target_R = drive  # position targets (rad)
-    if target_L != 0 or target_R != 0:
-        label += f"  targets: L={target_L:.1f} R={target_R:.1f}"
+    dL, dR = drive  # per-step position target increments (rad/step)
+    if dL != 0 or dR != 0:
+        label += f"  speed: dL={dL:.3f} dR={dR:.3f} rad/step"
 
     print(f"Recording: {label}")
-    obs, _ = env.reset(seed=42, options={"target_theta_L": target_L, "target_theta_R": target_R})
-    # Start from near-equilibrium (small tilt, zero velocity)
+    # Reset with zero initial targets — they will ramp up each step
+    obs, _ = env.reset(seed=42, options={"target_theta_L": 0.0, "target_theta_R": 0.0})
+    env.unwrapped.target_theta_L = 0.0
+    env.unwrapped.target_theta_R = 0.0
     if env_kwargs and (env_kwargs.get("use_pi_motor") or env_kwargs.get("data_driven")):
         env.unwrapped.state = np.zeros(8)
-        env.unwrapped.state[0] = target_L
-        env.unwrapped.state[1] = target_R
         env.unwrapped.state[2] = 0.02  # ~1.15° tilt
-    else:
-        env.unwrapped.state[0] = target_L
-        env.unwrapped.state[1] = target_R
     obs = env.unwrapped._get_obs()
 
     states, xs, ys, yaws = [], [], [], []
     for i in range(steps):
         # Pendulum impulses at 1s, 2.5s, 4s
         if i in (100, 250, 400):
-            env.unwrapped.state[7] += 0.8  # theta_dot_2 impulse (matches real car th2 range)
+            env.unwrapped.state[7] += 0.8
+        # Increment position targets (mimics firmware Normal() each 10ms)
+        env.unwrapped.target_theta_L += dL
+        env.unwrapped.target_theta_R += dR
+        obs = env.unwrapped._get_obs()
         u = policy(obs)
         obs, _, terminated, truncated, _ = env.step(u)
         states.append(obs.copy())
@@ -291,6 +303,10 @@ if __name__ == "__main__":
         "-m", "--model", choices=["ppo", "bc", "lqr"], default="ppo",
     )
     parser.add_argument(
+        "--model-path", default=None,
+        help="Override PPO model path (e.g. models/ppo_residual.zip)",
+    )
+    parser.add_argument(
         "-s", "--stochastic", action="store_true",
         help="Stochastic policy (PPO only)",
     )
@@ -301,16 +317,16 @@ if __name__ == "__main__":
         "-o", "--output", type=str, default=None,
     )
     parser.add_argument(
-        "--target-left", type=float, default=0.0,
-        help="Left wheel position target (rad)",
+        "--speed-left", type=float, default=0.0,
+        help="Left wheel speed (rad/step increment, mimics firmware movement_speed)",
     )
     parser.add_argument(
-        "--target-right", type=float, default=0.0,
-        help="Right wheel position target (rad)",
+        "--speed-right", type=float, default=0.0,
+        help="Right wheel speed (rad/step increment)",
     )
     parser.add_argument(
         "--slalom", action="store_true",
-        help="Straight → turn left → straight → turn right",
+        help="Predefined speed sequence: forward → left turn → forward → right turn",
     )
     parser.add_argument(
         "--pi-motor", action="store_true",
@@ -359,20 +375,21 @@ if __name__ == "__main__":
 
     if args.slalom:
         all_states, all_x, all_y, all_yaw = [], [], [], []
-        # Position targets: equal=straight, diff=turn
+        # Per-step speed increments (dL, dR) rad/step, mimicking firmware Normal()
+        # Equal = straight, differential = turn
         segments = [
-            (200, (40.0, 40.0)),    # straight
-            (200, (-15.0, 15.0)),   # turn left
-            (200, (40.0, 40.0)),    # straight
-            (200, (15.0, -15.0)),   # turn right
-            (200, (40.0, 40.0)),    # straight
+            (300, (0.20, 0.20)),    # forward
+            (300, (-0.05, 0.05)),   # gentle left turn
+            (300, (0.20, 0.20)),    # forward
+            (300, (0.05, -0.05)),   # gentle right turn
+            (300, (0.20, 0.20)),    # forward
         ]
         label_base = {"ppo": "BC-reg PPO", "bc": "BC", "lqr": "LQR"}[args.model]
         label = f"{label_base} (slalom)"
         for seg_steps, drive in segments:
             s, x, y, yaw, _ = run_and_record(
                 args.model, deterministic=True, steps=seg_steps, drive=drive,
-                env_kwargs=env_kwargs,
+                env_kwargs=env_kwargs, model_path=args.model_path,
             )
             all_states.extend(s)
             all_x.extend(x)
@@ -384,7 +401,8 @@ if __name__ == "__main__":
             args.model,
             deterministic=not args.stochastic,
             steps=args.steps,
-            drive=(args.target_left, args.target_right),
+            drive=(args.speed_left, args.speed_right),
             env_kwargs=env_kwargs,
+            model_path=args.model_path,
         )
         make_animation_3d(states, xs, ys, yaws, label, output)

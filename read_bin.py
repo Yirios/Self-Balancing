@@ -127,13 +127,20 @@ if __name__ == "__main__":
     else:
         port = args.serial
         if port is None:
-            # auto-detect
-            import glob
-            candidates = glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
-            if not candidates:
-                candidates = [f"COM{i}" for i in range(1, 20)]
-                print("Auto-detect not supported on this platform. Use -s COMx")
+            # Auto-detect cross-platform
+            try:
+                import serial.tools.list_ports
+                ports = list(serial.tools.list_ports.comports())
+                candidates = [p.device for p in ports if "STLink" in p.description
+                              or "STM32" in p.description or "Virtual COM" in p.description]
+                if not candidates:
+                    candidates = [p.device for p in ports]
+                if not candidates:
+                    print("No serial ports found. Specify with -s COMx or /dev/ttyACM0")
+                    sys.exit(1)
+                port = candidates[0]
+                print(f"Auto-detected: {port} ({len(ports)} ports total)")
+            except ImportError:
+                print("pyserial not installed. Specify port with -s or run: pip install pyserial")
                 sys.exit(1)
-            port = candidates[0]
-            print(f"Auto-detected: {port}")
         read_serial(port, args.baud, args.time, args.output)

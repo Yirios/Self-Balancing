@@ -16,101 +16,112 @@ obs = [θ_L-target_L, θ_R-target_R, θ₁, θ₂, θ̇_L, θ̇_R, θ̇₁, θ̇
 
 **10ms 离散步长**，匹配 STM32 LQR 控制周期。物理参数来自 `ref/` 中的 MATLAB 仿真。
 
-## 项目结构
-
-```
-.
-├── balancing_robot/
-│   ├── dynamics.py         # 拉格朗日力学 → G, H（ZOH 离散化）
-│   ├── env.py              # Gymnasium 环境（ideal / pi_motor / data_driven 三种模式）
-│   └── __init__.py
-├── fit_plant.py            # 系统辨识：从真车数据拟合 A_plant, B_plant
-├── pretrain_bc.py           # LQR 示范收集 → BC（K 初始化 MLP）
-├── kl_ppo.py                # KL 正则化 PPO 子类
-├── train_ppo_reg.py         # KL-PPO 训练入口
-├── visualize.py             # 3D matplotlib 仿真动画
-├── export_to_c.py           # PyTorch 权重 → STM32 C 头文件
-├── read_bin.py              # USB 二进制遥测接收（100 Hz）
-├── read_bt.py               # WiFi/蓝牙 ASCII 接收
-├── test_env.py              # 环境验证测试
-├── data/                    # 真车遥测 + 拟合模型
-│   ├── realcar/*.csv        # 6 次采集，每次 36K 样本
-│   ├── logs/*.csv           # 二进制日志
-│   └── real_data_model.npz  # A_plant, B_plant, noise_cov
-├── models/                  # 训练检查点
-│   ├── bc_model.pt          # K 初始化 MLP（≈ LQR）
-│   ├── ppo_balance_bot_kl.zip
-│   └── best_model_reg/
-├── outputs/
-│   ├── gifs/                # 3D 动画
-│   └── plots/               # 诊断图
-├── WHEELTEC_HAL/            # STM32 Keil MDK 固件
-├── docs/                    # 技术文档（README.en.md, TECHNICAL_REPORT.md, DEVLOG.md 等）
-└── pyproject.toml
-```
-
 ## 方法
 
 ### 1. 数据驱动植物模型
-
-从 6 个 CSV 文件的真车遥测数据（36025 个样本）拟合开放受控植物：
 
 ```
 x[k+1] = A_plant · x[k] + B_plant · u[k] + noise
 ```
 
-正则化最小二乘（`fit_plant.py`）。A_plant, B_plant 隐含编码了 PI 速度环、电机响应、摩擦、传感器动态。拟合得到的 `B_plant` 约为理想 `H` 矩阵的 1/7——PI 电机链显著衰减了控制力。
+从 6 个 CSV 文件的真车遥测数据（36025 个样本），用正则化最小二乘拟合（`fit_plant.py`）。A_plant, B_plant 隐含编码了 PI 速度环、电机响应、摩擦、传感器动态。拟合得到的 B_plant 约为理想 H 矩阵的 1/7。
 
-### 2. BC 预训练
+### 2. BC 预训练（梯度训练，非 OLS）
 
-在数据驱动植物上，LQR 收集示范 (~52 万步)。BC 模型（MLP 8→16→2）**直接从 LQR 增益矩阵 K 初始化**，跳过了梯度训练：
+直接从真车数据做标准化监督学习，不用仿真采样：
 
 ```
-W1 = [I₈; -I₈]     # 正/负通道拆分
-W2 = [-K; K]        # 通过 ReLU 重构 -K·obs
+标准化 → Linear(8,16) → ReLU → Linear(16,2) → 反标准化
 ```
 
-BC 输出与 `u = -K·obs` 逐位一致。
+Adam + ReduceLROnPlateau，200 epochs。标准化消除特征尺度失衡。val_mae ≈ 52 rad/s²（动作范围 ±5000 的 1%），92% 存活率。
 
-### 3. KL 正则化 PPO 微调
+### 3. 残差瓶颈 PPO 微调
 
-BC 权重膨胀到更大的 PPO 网络（8→32→32→2）。KL 惩罚项 `bc_coef · ||μ_ppo - μ_bc||²` 防止灾难性遗忘。保守超参数（lr=5e-5, clip_range=0.05, n_epochs=3）保护 LQR 基线。
+BC 冻结，叠加低秩可学习瓶颈（16→4→16），残差连接：
+
+```
+obs → W1(8→16)→ReLU→h1 ──────────────┐
+                  ↓                    │
+            W_down(16→4)→LeakyReLU→z   │
+                  ↓                    │
+            W_up(4→16)→LeakyReLU→h2 ───⊕→h→W2(16→2)→u
+```
+
+W_up 零初始化 → 初始等价 BC。LeakyReLU(0.01) 保证梯度流通。KL 正则化防止遗忘。
+
+| 架构 | MAC | 参数 |
+|------|:---:|:---:|
+| 旧 PPO (8→32→32→2) | 1379 | 1410 |
+| **残差瓶颈 (8→16→4→16→2)** | **288** | **386** |
+| 仅 BC (8→16→2) | 160 | 290 |
 
 ## 结果
 
-| 控制器 | 平均 ep_len | 存活/100 |
-|--------|:----------:|:--------:|
-| LQR | 1881 | 94 |
-| BC (K-init) | 1881 | 94 |
-| PPO | 1881 | 94 |
+| 控制器 | 平均 ep_len | 存活率 |
+|--------|:----------:|:------:|
+| LQR（真车 K 矩阵）| 1881 | 94% |
+| BC（梯度训练）| 2761 | 92% |
+| PPO（残差瓶颈）| 1841 | 92% |
 
-三者表现一致。PPO 策略已部署到真车，**平衡成功**。
+三者均能稳定平衡。瓶颈权重学到了非零值，但在当前线性植物上 LQR 已是最优——架构的真正价值在于部署到真机后学习非线性效应。
+
+## 项目结构
+
+```
+.
+├── balancing_robot/
+│   ├── dynamics.py         # 拉格朗日力学 → G, H
+│   ├── env.py              # Gymnasium 环境（ideal / pi_motor / data_driven）
+│   └── __init__.py
+├── fit_plant.py            # 系统辨识：A_plant, B_plant 岭回归
+├── pretrain_bc.py           # BC：真车数据标准化 + Adam 梯度训练
+├── train_residual_ppo.py    # 残差瓶颈 KL-PPO 训练入口
+├── train_ppo_reg.py         # 旧版 KL-PPO（标准 MLP，用于对比）
+├── kl_ppo.py                # KL 正则化 PPO 子类
+├── visualize.py             # 3D matplotlib 仿真动画
+├── export_to_c.py           # PyTorch → STM32 C 头文件
+├── read_bin.py / read_bt.py # 数据采集（USB / WiFi）
+├── test_env.py              # 环境验证测试
+├── data/                    # 真车遥测 + 拟合模型
+│   ├── realcar/*.csv
+│   ├── logs/*.csv
+│   └── real_data_model.npz
+├── models/                  # 检查点
+│   ├── bc_model.pt
+│   ├── ppo_residual.zip
+│   └── best_model_residual/
+├── outputs/                 # gifs/ + plots/
+├── docs/                    # TECHNICAL_REPORT.md, DEVLOG.md 等
+└── WHEELTEC_HAL/            # STM32 Keil 固件
+```
 
 ## 硬件部署
 
 ```
-网络: 8→32→32→2, 1410 参数
-Flash: ~20 KB, RAM: ~256 B, MAC: 1379
-STM32F103 @72MHz: ~1-2ms 推理（10ms 控制周期内安全）
+架构: 8→16→4→16→2 残差瓶颈, 386 参数
+MAC: 288, Flash: ~4 KB, RAM: ~128 B
+STM32F103 @72MHz: <1ms 推理（10ms 控制周期内安全）
 ```
 
 ```bash
-uv run python export_to_c.py -m models/ppo_balance_bot_kl.zip -o balance_nn.h
-# 复制 balance_nn.h 到 WHEELTEC_HAL/MiniBalance/Inc/
+uv run python export_to_c.py -m models/ppo_residual.zip -o balance_nn.h
+# balance_nn.h → WHEELTEC_HAL/MiniBalance/Inc/
 ```
 
-固件 `RL_Controller()` 调用 `nn_predict(state, action)`，下游 PI 速度环与 LQR 共用。
+标准化参数已在导出时烘焙进权重，C 代码无需预处理。
 
 ## 快速开始
 
 ```bash
 uv sync
-uv run python test_env.py                           # 验证环境
-uv run python fit_plant.py                          # 从真车数据拟合植物模型
-uv run python pretrain_bc.py                        # K-init BC (~30s)
-uv run python train_ppo_reg.py                      # KL-PPO 微调 (~5min)
-uv run python visualize.py -m ppo --data-driven     # 3D 动画
-uv run python export_to_c.py -m models/ppo_balance_bot_kl.zip -o balance_nn.h
+uv run python fit_plant.py                          # 拟合植物模型
+uv run python pretrain_bc.py                        # BC 梯度预训练 (~1min)
+uv run python train_residual_ppo.py                  # 残差瓶颈 PPO (~8min)
+uv run python visualize.py -m ppo --data-driven \
+    --model-path models/ppo_residual.zip             # 3D 动画
+uv run python export_to_c.py \
+    -m models/ppo_residual.zip -o balance_nn.h       # 导出 STM32
 
 # 数据采集
 uv run python read_bin.py -s /dev/ttyACM0 -t 30

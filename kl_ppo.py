@@ -8,17 +8,32 @@ from stable_baselines3.ppo import PPO
 
 
 class BCReference(nn.Module):
-    """Frozen BC model, outputs reference action for a given state."""
+    """Frozen BC model, outputs reference action for a given state.
 
-    def __init__(self, bc_model):
+    Optionally applies input/output standardization learned during BC training.
+    """
+
+    def __init__(self, bc_model, x_mean=None, x_std=None, y_mean=None, y_std=None):
         super().__init__()
         self.model = bc_model
         for p in self.model.parameters():
             p.requires_grad = False
         self.model.eval()
+        if x_mean is not None:
+            self.register_buffer("x_mean", x_mean.clone().detach())
+            self.register_buffer("x_std", x_std.clone().detach())
+            self.register_buffer("y_mean", y_mean.clone().detach())
+            self.register_buffer("y_std", y_std.clone().detach())
+        else:
+            self.x_mean = None
 
     def forward(self, obs):
-        return self.model(obs.float())
+        x = obs.float()
+        if self.x_mean is not None:
+            x = (x - self.x_mean) / self.x_std
+            y_s = self.model(x)
+            return y_s * self.y_std + self.y_mean
+        return self.model(x)
 
 
 class KLRegularizedPPO(PPO):

@@ -305,6 +305,148 @@ BC MLP 8→16→2 膨胀到 PPO 8→32→32→2：
 
 ---
 
+## 阶段 13：梯度训练 BC —— 告别 OLS + K 编码
+
+### 13.1 为什么放弃 OLS
+
+之前直接用最小二乘拟合 `u = W @ obs`，再手工编码进 MLP（`W1=[I₈;-I₈]`, `W2=[-K;K]`）。虽然精确，但有两个问题：
+
+1. **依赖线性假设**：OLS 只能恢复 LQR 的线性增益。BC 模型虽然在非线性植物上可以做更多，但 OLS 初始化把它锁在了 LQR 的线性流形上
+2. **不是标准深度学习方法**：不符合规范的预处理 → 训练 → 评估 pipeline
+
+### 13.2 标准化 + Adam 训练
+
+直接从真车 36K 样本做完全监督学习：
+
+```
+x_mean, x_std = obs.mean(), obs.std()
+y_mean, y_std = act.mean(), act.std()
+
+X_s = (X - x_mean) / x_std        # → zero-mean, unit-variance
+Y_s = (Y - y_mean) / y_std
+
+model = Linear(8,16,bias=False) → ReLU → Linear(16,2,bias=False)
+loss = MSE(model(X_s), Y_s)
+opt = Adam(lr=1e-3) + ReduceLROnPlateau(factor=0.5, patience=10)
+epochs = 200
+```
+
+关键设计决策：
+- `kaiming_normal_` 初始化（适配 ReLU）
+- 标准化消除特征尺度失衡（之前 θ₂ ~0.01 rad 的梯度曾被位置 ~2 rad 的梯度淹没）
+- `ReduceLROnPlateau` 自动降学习率，避免震荡
+
+### 13.3 结果
+
+```
+epoch 20:  val_loss=0.0030  val_mae=19.0  (标准化尺度)
+epoch 100: val_loss=0.0000  val_mae=0.5
+epoch 200: val_loss=0.0000  val_mae=0.1
+```
+
+`val_mae=0.1` × `y_std≈519` = 原始尺度 MAE ≈ 52 rad/s²（动作范围 ±5000 的 1%）。
+
+BC eval: mean=2761, 92% 存活率 — **与 OLS+K 初始化的 BC 完全持平**，但用的是纯梯度训练。
+
+### 13.4 标准化烘焙到 C 导出
+
+训练完成后不希望在推理时做标准化预处理，把参数烘焙进权重：
+
+```
+W0_baked = W1 / σ_x             # 第一层吸收输入标准化
+b0_baked = -W0_baked @ μ_x      # 偏置补偿均值偏移
+
+W2_baked = W2 * σ_y             # 最后一层吸收输出反标准化
+b2_baked = μ_y                  # 偏置 = 输出均值
+```
+
+导出的 C 代码与普通 MLP 完全一致，无需预处理。
+
+---
+
+## 阶段 14：残差瓶颈架构 —— 8→16→4→16→2
+
+### 14.1 动机
+
+BC 只是模仿 LQR。真机上存在摩擦、死区、传感器量化等非线性效应，BC 无法处理。需要一个低秩可学习的修正模块叠加在 BC 之上。
+
+### 14.2 架构
+
+```
+obs → W1(8→16) → ReLU → h1 ─────────────────┐
+                        ↓                    │
+                  W_down(16→4) → LeakyReLU → z
+                        ↓                    │
+                  W_up(4→16) → LeakyReLU → h2─┤
+                                              ⊕ → h → W2(16→2) → u
+```
+
+- W1, W2：BC 预训练权重，冻结
+- W_down：正交初始化
+- W_up：**精确零初始化** → h2 ≡ 0，初始等价 BC
+- Bottleneck 用 **LeakyReLU(0.01)** 而非 ReLU（保证 W_up=0 时梯度不断）
+- 残差 `h = h1 + h2`
+
+### 14.3 SB3 集成
+
+SB3 的 MlpPolicy 不直接支持残差瓶颈。用自定义 `features_extractor` 实现：
+- `ResidualBottleneckExtractor`：8D obs → 16D features（含标准化 + encoder + bottleneck + residual）
+- `net_arch=[]`：mlp_extractor 设为恒等（16D 直通 action_net）
+- `action_net = Linear(16, 2)`，权重从 BC 复制并烘焙输出标准化
+
+### 14.4 结果
+
+| 模型 | mean ep_len | survival |
+|------|:----------:|:--------:|
+| LQR | 1881 | 94% |
+| BC (梯度训练) | 2761 | 92% |
+| PPO (残差瓶颈) | 1841 | 92% |
+
+瓶颈学到了非零权重（W_down, W_up 均非零），但未超越 LQR——因为目前的 A_plant, B_plant 是线性的，LQR 已是最优。架构的真正价值在于部署到真机后，通过在线微调学习摩擦、死区等非线性效应。
+
+### 14.5 计算量对比
+
+| 架构 | MAC | 参数 |
+|------|:---:|:---:|
+| 旧 PPO (8→32→32→2) | 1379 | 1410 |
+| 残差瓶颈 (8→16→4→16→2) | **288** | **386** |
+| 仅 BC (8→16→2) | 160 | 290 |
+
+---
+
+## 阶段 15：可视化运动控制 —— 匹配真车 Normal()
+
+### 15.1 问题
+
+`visualize.py` 的 slalom 模式用绝对位置目标值驱动运动：reset 时直接设 `target_theta_L/R = ±40 rad`。真车固件的 `Normal()` 是逐步递增：
+
+```c
+// control.c Normal(): 每 10ms 执行一次
+Target_theta_L += movement_speed;
+Target_theta_R += turn_speed;
+```
+
+### 15.2 修复
+
+`drive` 参数从"绝对目标值"改为"每步增量"：
+
+```python
+for step in range(steps):
+    env.target_theta_L += dL   # 仿 Normal() 递增
+    env.target_theta_R += dR
+    obs = env._get_obs()       # 刷新位置误差
+    u = policy(obs)
+    obs, _, term, _, _ = env.step(u)
+```
+
+slalom 段从 `(300, (40.0, 40.0))` 改为 `(300, (0.20, 0.20))`——0.20 rad/step = 20 rad/s 轮速。
+
+### 15.3 之前的 bug
+
+旧代码中 `env.state[0:2] = target_L/R` 把初始位置设为等于目标，位置误差永远为零——机器人平衡但不动。
+
+---
+
 ## 最终结论
 
 ### 已验证
