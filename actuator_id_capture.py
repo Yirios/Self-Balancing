@@ -132,14 +132,28 @@ def auto_port() -> str:
     import serial.tools.list_ports
 
     ports = list(serial.tools.list_ports.comports())
-    candidates = [
-        item.device for item in ports
-        if any(text in (item.description or "") for text in ("STLink", "STM32", "Virtual COM"))
-    ]
+    preferred_words = ("STLink", "ST-Link", "STM32", "Virtual COM", "USB Serial", "CH9102", "CH340")
+    candidates = []
+    for item in ports:
+        description = item.description or ""
+        hwid = item.hwid or ""
+        device = item.device or ""
+        is_usb_path = (
+            device.startswith("/dev/serial/by-id/")
+            or device.startswith("/dev/ttyACM")
+            or device.startswith("/dev/ttyUSB")
+            or device.upper().startswith("COM")
+        )
+        is_named_adapter = any(text in description or text in hwid for text in preferred_words)
+        if is_usb_path or is_named_adapter:
+            candidates.append(device)
     if not candidates:
-        candidates = [item.device for item in ports]
-    if not candidates:
-        raise RuntimeError("未找到串口；请用 --serial 指定 /dev/ttyACM0 或 COMx")
+        available = ", ".join(item.device for item in ports) or "无"
+        raise RuntimeError(
+            "未找到可信的 USB/ACM 串口；请用 --serial 显式指定，例如 "
+            "/dev/ttyACM0、/dev/ttyUSB0 或 /dev/serial/by-id/...。"
+            f" 当前可见串口: {available}"
+        )
     return candidates[0]
 
 

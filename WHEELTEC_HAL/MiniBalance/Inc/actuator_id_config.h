@@ -11,10 +11,14 @@
 #define ACT_ID_SAMPLE_RATE_HZ 500U
 #define ACT_ID_UART_BAUD 460800U
 
+/* SystemClock_Config() sets STM32F103 SYSCLK/HCLK to 72 MHz in this project. */
+#define ACT_ID_DWT_CLOCK_HZ 72000000UL
+
 /* First-rig safety limit (20% of the normal 6900-count limit). */
 #define ACT_ID_PWM_LIMIT 1380
 #define ACT_ID_ABSOLUTE_PWM_LIMIT 6900
 #define ACT_ID_ENCODER_COUNTS_PER_REV 60000L
+#define ACT_ID_MRAD_PER_REV 6283L
 #define ACT_ID_UNDERVOLTAGE_DEFAULT_MV 11100U
 #define ACT_ID_COMMAND_TIMEOUT_MS 1500U
 #define ACT_ID_RING_CAPACITY 64U

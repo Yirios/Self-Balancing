@@ -145,7 +145,7 @@ static int16_t clamp_pwm(long value)
 static uint64_t hardware_time_us(void)
 {
     uint64_t cycles = elapsed_cycles + (uint32_t)(DWT->CYCCNT - last_cycle);
-    return cycles / (SystemCoreClock / 1000000U);
+    return cycles / (ACT_ID_DWT_CLOCK_HZ / 1000000U);
 }
 
 static void apply_output(uint8_t mode_l, int16_t command_l,
@@ -402,7 +402,7 @@ void ActuatorId_SysTick1ms(void)
     now_cycle = DWT->CYCCNT;
     elapsed_cycles += (uint32_t)(now_cycle - last_cycle);
     last_cycle = now_cycle;
-    time_us = elapsed_cycles / (SystemCoreClock / 1000000U);
+    time_us = elapsed_cycles / (ACT_ID_DWT_CLOCK_HZ / 1000000U);
 
     sample_divider++;
     if (sample_divider < (1000U / ACT_ID_SAMPLE_RATE_HZ)) return;
@@ -419,10 +419,10 @@ void ActuatorId_SysTick1ms(void)
     encoder_count_l += delta_l;
     encoder_count_r += delta_r;
 
-    /* delta * 2*pi / 60000 / 0.002, expressed as mrad/s. */
-    speed_l_mrad_s = (int32_t)(((int64_t)delta_l * 3141593LL * ACT_ID_SAMPLE_RATE_HZ) /
+    /* delta * 2*pi*1000 / counts_per_rev / dt, expressed as mrad/s. */
+    speed_l_mrad_s = (int32_t)(((int64_t)delta_l * ACT_ID_MRAD_PER_REV * ACT_ID_SAMPLE_RATE_HZ) /
                                ACT_ID_ENCODER_COUNTS_PER_REV);
-    speed_r_mrad_s = (int32_t)(((int64_t)delta_r * 3141593LL * ACT_ID_SAMPLE_RATE_HZ) /
+    speed_r_mrad_s = (int32_t)(((int64_t)delta_r * ACT_ID_MRAD_PER_REV * ACT_ID_SAMPLE_RATE_HZ) /
                                ACT_ID_ENCODER_COUNTS_PER_REV);
 
     state_machine_tick();
