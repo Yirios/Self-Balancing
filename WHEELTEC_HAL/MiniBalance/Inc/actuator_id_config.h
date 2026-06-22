@@ -23,15 +23,12 @@
 #define ACT_ID_ZERO_PWM_BRIDGE_MODE 1U
 
 /*
- * IMPORTANT: the repository does not contain the B585 schematic or the motor
- * driver part number.  The values below are placeholders, not a verified H
- * bridge truth table.  Firmware refuses CFG/START while this flag is zero.
- *
- * After checking the board schematic and driver data sheet, set the four CCR
- * values for COAST and BRAKE, document the evidence in ACTUATOR_ID.md, perform
- * the hand-spin test, then change this flag to 1.
+ * Verified against ref/ C10A schematic + AT8236 datasheet:
+ * IN1=0,IN2=0 -> OUT1=Z,OUT2=Z (COAST/sleep after 1 ms)
+ * IN1=1,IN2=1 -> OUT1=L,OUT2=L (BRAKE)
+ * See WHEELTEC_HAL/ACTUATOR_ID.md for exact evidence paths.
  */
-#define ACT_ID_BRIDGE_TRUTH_TABLE_CONFIRMED 0
+#define ACT_ID_BRIDGE_TRUTH_TABLE_CONFIRMED 1
 
 #define ACT_ID_PWM_LOW  0U
 #define ACT_ID_PWM_HIGH 7200U
