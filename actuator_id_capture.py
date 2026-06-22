@@ -280,21 +280,38 @@ def run(args: argparse.Namespace) -> int:
 
     print(f"打开 {port} @ {args.baud}；输出 {csv_path}")
     with serial.Serial(port, args.baud, timeout=0.02, write_timeout=0.5) as ser:
+        # Put the firmware in a benign output state before configuring a new
+        # run.  This avoids poisoning the next attempt with an E_STOP record
+        # when the previous attempt timed out before IDSTART.
+        ser.write(b"IDCOAST\n")
+        time.sleep(0.05)
         ser.reset_input_buffer()
+        ser.reset_output_buffer()
         ser.write((cfg + "\n").encode("ascii"))
-        deadline = time.monotonic() + 3.0
+        deadline = time.monotonic() + 5.0
+        next_cfg = time.monotonic() + 0.5
         while time.monotonic() < deadline and not armed:
+            now = time.monotonic()
+            if now >= next_cfg:
+                ser.write((cfg + "\n").encode("ascii"))
+                next_cfg = now + 0.5
             for record in parser.feed(ser.read(ser.in_waiting or 1)):
                 if record.state == 1 and record.values[2] == args.experiment_id:
                     armed = True
                     break
         if not armed:
-            ser.write(b"IDSTOP\n")
+            ser.write(b"IDCOAST\n")
             raise RuntimeError(
                 "固件未进入 ARMED；请确认已烧录辨识固件，并已在 actuator_id_config.h "
                 "设置 ACT_ID_BRIDGE_TRUTH_TABLE_CONFIRMED=1"
             )
 
+        # Drop leftover ARMED telemetry before the actual run.  Otherwise a
+        # queued pre-start frame can sit in front of the first run frame.  If
+        # the event_code=1 frame is then corrupted or missed, the older logic
+        # would ignore all subsequent valid samples and report "0 samples".
+        ser.reset_input_buffer()
+        parser.buffer.clear()
         ser.write(b"IDSTART\n")
         start_wall = time.monotonic()
         last_heartbeat = time.monotonic()
@@ -306,8 +323,13 @@ def run(args: argparse.Namespace) -> int:
                     ser.write(b"IDHEART\n")
                     last_heartbeat = now
                 for record in parser.feed(ser.read(ser.in_waiting or 1)):
+                    if record.values[2] != args.experiment_id:
+                        continue
                     if not capture_started:
-                        capture_started = record.event_code == 1 and record.values[2] == args.experiment_id
+                        capture_started = (
+                            record.event_code == 1
+                            or record.state != 1
+                        )
                         if not capture_started:
                             continue
                     row = record.as_row(previous_time_us)

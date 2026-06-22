@@ -22,6 +22,7 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN 0 */
+#include "actuator_id_config.h"
 
 /* USER CODE END 0 */
 
@@ -68,7 +69,11 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin : PtPin */
   GPIO_InitStruct.Pin = KEY2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+#if ACTUATOR_ID_MODE
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+#else
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+#endif
   HAL_GPIO_Init(KEY2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PtPin */

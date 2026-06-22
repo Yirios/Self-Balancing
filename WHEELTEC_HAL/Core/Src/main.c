@@ -138,7 +138,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	JTAG_Set(JTAG_SWD_DISABLE);     //关闭JTAG接口
 	JTAG_Set(SWD_ENABLE);           //打开SWD接口 可以利用主板的SWD接口调试
+#if !ACTUATOR_ID_MODE
 	delay_init();                   //延迟函数初始化
+#endif
 	BEEP_GPIO_Config();							//蜂鸣器初始化
 #if ACTUATOR_ID_MODE
 	ActuatorId_Init();              //专用开环辨识模式，默认电机 OFF
