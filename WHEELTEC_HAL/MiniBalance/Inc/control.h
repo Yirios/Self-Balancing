@@ -75,6 +75,7 @@ int Balance(float angle,float gyro);
 int Velocity(int encoder_left,int encoder_right);
 int Turn(float gyro);
 void Set_Pwm(int motor_left,int motor_right);
+void Control_ResetIncrementalPI(void);
 void Limit_Pwm(void);
 int PWM_Limit(int IN,int max,int min);
 u8 Turn_Off(float angle, int voltage);
@@ -91,9 +92,6 @@ void Normal(void);
 int Lidar_Avoid(void);
 extern short Accel_Y,Accel_Z,Accel_X,Accel_Angle_x,Accel_Angle_y,Gyro_X,Gyro_Z,Gyro_Y;
 extern float Target_x_speed, Target_angle_x, Target_gyro_z;
-static int Incremental_L(float CurrentVal,float TargetVal);
-static int Incremental_R(float CurrentVal,float TargetVal);
-static float angle_count(float Angle_ADC, float mid);
 extern float Target_theta_L, Target_theta_R, Target_theta_L_dot, Target_theta_R_dot, Target_theta_1;
 extern float theta_1,theta_2, last_theta_2, theta_dot_2, last_theta_dot_2;	
 extern int Moto_Ki, Moto_Kp;//PI控制器系数

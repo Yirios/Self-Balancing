@@ -19,6 +19,7 @@ All rights reserved
 #include "control.h"
 #include "rl_send.h"
 #include "balance_nn.h"   // RL model: nn_predict(input[10], output[2])
+#include "actuator_id.h"
 short Accel_Y,Accel_Z,Accel_X,Accel_Angle_x,Accel_Angle_y,Gyro_X,Gyro_Z,Gyro_Y;
 //LQR状态反馈系数
 float K11=81.2695, K12=-10.0616, K13=-5492.4061, K14=18921.7098, K15=100.3633, K16=8.0376, K17=447.3084, K18=2962.7738;
@@ -40,6 +41,10 @@ u8 count=0;											//计数器变量
 u8 stop=0;
 float L_Bias=0,R_Bias=0;
 int Bias_interval=5;
+static float incremental_last_bias_l;
+static float incremental_last_bias_r;
+static int incremental_pwm_l;
+static int incremental_pwm_r;
 
 /**************************************************************************
 Function: Control function
@@ -55,6 +60,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	static int Voltage_Temp,Voltage_Count,Voltage_All;		//电压测量相关变量
 	static u8 Flag_Target;																//控制函数相关变量，提供10ms基准
 	if(GPIO_Pin==GPIO_PIN_9){
+#if ACTUATOR_ID_MODE
+		/* SysTick owns encoder sampling and PWM in identification builds. */
+		return;
+#else
 		Encoder_Left=Read_Encoder(4);            					  //读取左轮编码器的值，前进为正，后退为负
 		Encoder_Right=-Read_Encoder(8);           					//读取右轮编码器的值，前进为正，后退为负
 		Angle_ADC = Get_Adc_Average(Angle_Ch,30);
@@ -146,6 +155,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		Flag_Stop=KEY2_STATE;
 		if(Voltage<10) Flag_Stop = 1;
 		if(Flag_Stop) PWMA_IN1=0,PWMA_IN2=0,PWMB_IN1=0,PWMB_IN2=0;
+#endif
 	}
 	return ;
 }
@@ -158,16 +168,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 static int Incremental_L(float CurrentVal,float TargetVal)
 {
 	float Bias;
-	static float  Last_bias;
-	static int PWM;
 	Bias =  TargetVal - CurrentVal;
-	PWM += Moto_Ki*Bias + Moto_Kp*(Bias-Last_bias);
-	Last_bias=Bias;
+	incremental_pwm_l += Moto_Ki*Bias + Moto_Kp*(Bias-incremental_last_bias_l);
+	incremental_last_bias_l=Bias;
 	
 	//停止运行后清空历史数值
-	if(Flag_Stop || stop ) PWM=0,stop=0;
+	if(Flag_Stop || stop ) incremental_pwm_l=0,stop=0;
 	
-	return PWM;
+	return incremental_pwm_l;
 }
 ///**************************************************************************
 //函数功能：增量式PI控制器
@@ -178,16 +186,23 @@ static int Incremental_L(float CurrentVal,float TargetVal)
 static int Incremental_R(float CurrentVal,float TargetVal)
 {
 	float Bias;
-	static float  Last_bias;
-	static int PWM;
 	Bias =  TargetVal - CurrentVal;
-	PWM += Moto_Ki*Bias + Moto_Kp*(Bias-Last_bias);
-	Last_bias=Bias;
+	incremental_pwm_r += Moto_Ki*Bias + Moto_Kp*(Bias-incremental_last_bias_r);
+	incremental_last_bias_r=Bias;
 	
 	//停止运行后清空历史数值
-	if(Flag_Stop || stop ) PWM=0,stop=0;
+	if(Flag_Stop || stop ) incremental_pwm_r=0,stop=0;
 	
-	return PWM;
+	return incremental_pwm_r;
+}
+
+void Control_ResetIncrementalPI(void)
+{
+	incremental_last_bias_l = 0.0f;
+	incremental_last_bias_r = 0.0f;
+	incremental_pwm_l = 0;
+	incremental_pwm_r = 0;
+	stop = 0;
 }
 ///**************************************************************************
 //函数功能：通过输入的ADC采集值计算角度
@@ -480,4 +495,3 @@ void RL_Controller() {
 	// float v_cmd = (Target_theta_L_dot + Target_theta_R_dot) * 0.01675f;
 	// ...
 }
-

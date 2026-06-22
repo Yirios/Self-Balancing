@@ -28,6 +28,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "sys.h"
+#include "actuator_id.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -122,22 +123,30 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM3_Init();
   MX_USART1_UART_Init();
+#if !ACTUATOR_ID_MODE
   MX_USART3_UART_Init();
   MX_USART2_UART_Init();        // ST-Link VCP binary telemetry
+#endif
   MX_TIM8_Init();
   MX_TIM4_Init();
   MX_ADC2_Init();
+#if !ACTUATOR_ID_MODE
   MX_DMA_Init();
   MX_UART4_Init();
   MX_UART5_Init();
+#endif
   /* USER CODE BEGIN 2 */
 	JTAG_Set(JTAG_SWD_DISABLE);     //关闭JTAG接口
 	JTAG_Set(SWD_ENABLE);           //打开SWD接口 可以利用主板的SWD接口调试
 	delay_init();                   //延迟函数初始化
 	BEEP_GPIO_Config();							//蜂鸣器初始化
+#if ACTUATOR_ID_MODE
+	ActuatorId_Init();              //专用开环辨识模式，默认电机 OFF
+#else
 	OLED_Init();										//OLED初始化
 	MPU6050_initialize();           //MPU6050初始化
 	DMP_Init();                     //初始化DMP
+#endif
   /* USER CODE END 2 */
 	
   /* Infinite loop */
@@ -145,6 +154,9 @@ int main(void)
 	
   while (1)
   {
+#if ACTUATOR_ID_MODE
+		ActuatorId_Process();
+#else
 		if(Flag_Show==0)          		//使用MiniBalance APP和OLED显示屏
 			{
 				PS2_Read();						//手柄数据读取（每圈必须读）
@@ -165,6 +177,7 @@ int main(void)
 			Lidar_data_Deal();
 			Lidar_Deal_Flag=0;
 		}
+#endif
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -253,4 +266,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
