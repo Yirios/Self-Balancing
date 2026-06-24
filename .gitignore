@@ -46,6 +46,7 @@ backup_*/
 
 # data
 data/
+outputs/
 ref
 *.csv
 *.png
