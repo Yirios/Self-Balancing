@@ -139,7 +139,11 @@ int main(void)
 	JTAG_Set(JTAG_SWD_DISABLE);     //关闭JTAG接口
 	JTAG_Set(SWD_ENABLE);           //打开SWD接口 可以利用主板的SWD接口调试
 #if !ACTUATOR_ID_MODE
+<<<<<<< HEAD
 	delay_init();
+=======
+	delay_init();                   //延迟函数初始化
+>>>>>>> fc289f2d7fdc55f619eb1515f20ba92b563903da
 #endif
 	BEEP_GPIO_Config();							//蜂鸣器初始化
 #if ACTUATOR_ID_MODE

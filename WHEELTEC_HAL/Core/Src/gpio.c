@@ -22,6 +22,7 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN 0 */
+#include "actuator_id_config.h"
 
 /* USER CODE END 0 */
 
